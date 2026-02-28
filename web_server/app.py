@@ -1,6 +1,9 @@
 from contextlib import asynccontextmanager
+from dotenv import load_dotenv
 
 from fastapi import FastAPI, HTTPException, Query
+
+load_dotenv()
 
 from db import connect_db, close_db
 from models.student import (
