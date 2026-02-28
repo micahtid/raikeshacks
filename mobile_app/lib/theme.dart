@@ -2,21 +2,31 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 abstract final class AppColors {
-  static const Color primary = Color(0xFF006FFD);
-  static const Color onPrimary = Color(0xFFFFFFFF);
+  // Accent
+  static const Color primary = Color(0xFFCDC9EC);
+  static const Color onPrimary = Color(0xFF242422);
 
-  static const Color textPrimary = Color(0xFF1F2024);
-  static const Color textSecondary = Color(0xFF71727A);
-  static const Color textTertiary = Color(0xFF8F9098);
+  // Text hierarchy
+  static const Color textPrimary = Color(0xFFC2C0B6);
+  static const Color textSecondary = Color(0xFF8A8880);
+  static const Color textTertiary = Color(0xFF5E5D58);
 
-  static const Color surface = Color(0xFFFFFFFF);
-  static const Color surfaceLightBlue = Color(0xFFEAF2FF);
-  static const Color surfaceMediumBlue = Color(0xFFB4DBFF);
-  static const Color surfaceGray = Color(0xFFF8F9FE);
+  // Surfaces
+  static const Color surface = Color(0xFF262624);
+  static const Color surfaceGray = Color(0xFF242422);
+  static const Color surfaceLightBlue = Color(0xFF32313E);
+  static const Color surfaceMediumBlue = Color(0xFF3A394A);
 
-  static const Color border = Color(0xFFC5C6CC);
-  static const Color divider = Color(0xFFE8E9F1);
-  static const Color inactive = Color(0xFFD4D6DD);
+  // Borders
+  static const Color border = Color(0xFF40403C);
+  static const Color divider = Color(0xFF40403C);
+  static const Color inactive = Color(0xFF4A4A46);
+
+  // Icons
+  static const Color icon = Color(0xFFC2C0B6);
+
+  // Danger
+  static const Color danger = Color(0xFFE85D5D);
 }
 
 abstract final class AppRadius {
@@ -46,8 +56,9 @@ ThemeData buildAppTheme() {
 
   return ThemeData(
     useMaterial3: true,
+    brightness: Brightness.dark,
     scaffoldBackgroundColor: AppColors.surface,
-    colorScheme: const ColorScheme.light(
+    colorScheme: const ColorScheme.dark(
       primary: AppColors.primary,
       onPrimary: AppColors.onPrimary,
       surface: AppColors.surface,
@@ -160,7 +171,7 @@ ThemeData buildAppTheme() {
     ),
     cardTheme: CardThemeData(
       elevation: 0,
-      color: AppColors.surface,
+      color: AppColors.surfaceGray,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(AppRadius.card),
       ),
@@ -174,6 +185,23 @@ ThemeData buildAppTheme() {
     dividerTheme: const DividerThemeData(
       color: AppColors.divider,
       thickness: 0.5,
+    ),
+    dialogTheme: DialogThemeData(
+      backgroundColor: AppColors.surfaceGray,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppRadius.card),
+      ),
+    ),
+    snackBarTheme: SnackBarThemeData(
+      backgroundColor: AppColors.surfaceLightBlue,
+      contentTextStyle: GoogleFonts.sora(
+        fontSize: 14,
+        color: AppColors.textPrimary,
+      ),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppRadius.card),
+      ),
+      behavior: SnackBarBehavior.floating,
     ),
   );
 }

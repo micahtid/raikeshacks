@@ -34,6 +34,13 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     'Open Source',
     'Looking for opportunities',
   ];
+  static const _focusIcons = <String, IconData>{
+    'Startup': Icons.rocket_launch_rounded,
+    'Research': Icons.science_rounded,
+    'Side Project': Icons.handyman_rounded,
+    'Open Source': Icons.public_rounded,
+    'Looking for opportunities': Icons.work_rounded,
+  };
 
   // Screen 2 — Project
   final _projectController = TextEditingController();
@@ -41,6 +48,12 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   final Set<String> _selectedDomains = {};
   final _domainController = TextEditingController();
   static const _stageOptions = ['Idea', 'MVP', 'Launched', 'Scaling'];
+  static const _stageIcons = <String, IconData>{
+    'Idea': Icons.lightbulb_rounded,
+    'MVP': Icons.construction_rounded,
+    'Launched': Icons.rocket_rounded,
+    'Scaling': Icons.trending_up_rounded,
+  };
   static const _domainSuggestions = [
     'HealthTech',
     'EdTech',
@@ -334,6 +347,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             return Padding(
               padding: const EdgeInsets.only(bottom: AppSpacing.listItemGap),
               child: _SelectionItem(
+                icon: _focusIcons[option],
                 label: option,
                 selected: selected,
                 onTap: () {
@@ -385,6 +399,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             return Padding(
               padding: const EdgeInsets.only(bottom: AppSpacing.listItemGap),
               child: _SelectionItem(
+                icon: _stageIcons[stage],
                 label: stage,
                 selected: selected,
                 onTap: () {
@@ -588,11 +603,13 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 // ── Selection item (replaces FilterChip / ChoiceChip) ─────────────────
 
 class _SelectionItem extends StatelessWidget {
+  final IconData? icon;
   final String label;
   final bool selected;
   final VoidCallback onTap;
 
   const _SelectionItem({
+    this.icon,
     required this.label,
     required this.selected,
     required this.onTap,
@@ -609,12 +626,21 @@ class _SelectionItem extends StatelessWidget {
         decoration: BoxDecoration(
           color: selected ? AppColors.surfaceLightBlue : Colors.transparent,
           borderRadius: BorderRadius.circular(AppRadius.card),
-          border: selected
-              ? null
-              : Border.all(color: AppColors.border, width: 0.5),
+          border: Border.all(
+            color: selected ? AppColors.surfaceLightBlue : AppColors.border,
+            width: 0.5,
+          ),
         ),
         child: Row(
           children: [
+            if (icon != null) ...[
+              Icon(
+                icon,
+                size: 20,
+                color: selected ? AppColors.primary : AppColors.textSecondary,
+              ),
+              const SizedBox(width: 14),
+            ],
             Expanded(
               child: Text(
                 label,
@@ -709,9 +735,10 @@ class _DomainChip extends StatelessWidget {
         decoration: BoxDecoration(
           color: selected ? AppColors.surfaceLightBlue : Colors.transparent,
           borderRadius: BorderRadius.circular(20),
-          border: selected
-              ? null
-              : Border.all(color: AppColors.border, width: 0.5),
+          border: Border.all(
+            color: selected ? AppColors.surfaceLightBlue : AppColors.border,
+            width: 0.5,
+          ),
         ),
         child: Text(
           label,
