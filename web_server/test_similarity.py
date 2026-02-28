@@ -36,8 +36,10 @@ def create_example_student(
     skills_need: list[str], 
     focus: list[FocusArea],
     project_one_liner: Optional[str] = None,
-    industry: list[str] = []
+    industry: Optional[list[str]] = None
 ) -> StudentProfile:
+    if industry is None:
+        industry = []
     uid = str(uuid4())
     return StudentProfile(
         uid=uid,
@@ -60,7 +62,7 @@ def create_example_student(
         )
     )
 
-def run_tests():
+def test_similarity_semantic_and_fallback():
     print("🚀 Starting Resilient Similarity Engine Tests...")
 
     # 1. Create Example Profiles
@@ -82,7 +84,7 @@ def run_tests():
         ["Education", "Data Viz"]
     )
 
-    print(f"✅ Created example profiles: Alice, Bob.")
+    print("✅ Created example profiles: Alice, Bob.")
 
     # 2. Test Embedding Generation
     print("\n🧪 Testing generate_profile_embeddings...")
@@ -104,7 +106,7 @@ def run_tests():
     weights = Weights(complementarity=0.65, focus=0.20, industry=0.15)
     score_ab = compute_match(alice, alice_vecs, bob, bob_vecs, weights)
     
-    print(f"Match Alice -> Bob:")
+    print("Match Alice -> Bob:")
     print(f"  Total Score: {score_ab.score:.4f}")
     print(f"  Complementarity: {score_ab.complementarity:.4f}")
     print(f"  Matched Skills: {score_ab.matched_skills}")
@@ -132,5 +134,3 @@ def run_tests():
 
     print("\n🎉 All tests passed (including resilience fallback)!")
 
-if __name__ == "__main__":
-    run_tests()
