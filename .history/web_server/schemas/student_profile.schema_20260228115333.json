@@ -1,0 +1,88 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "student_profile.schema.json",
+  "title": "StudentProfile",
+  "description": "Raw student data from onboarding. Written once at signup, updated only when the student edits their profile.",
+  "type": "object",
+  "required": ["uid", "created_at", "identity", "focus_areas", "skills"],
+  "properties": {
+
+    "uid": { "type": "string", "format": "uuid" },
+    "created_at": { "type": "string", "format": "date-time" },
+    "updated_at": { "type": "string", "format": "date-time" },
+
+    "identity": {
+      "type": "object",
+      "description": "Populated at account creation.",
+      "required": ["full_name", "email", "university", "graduation_year", "major"],
+      "properties": {
+        "full_name":         { "type": "string" },
+        "email":             { "type": "string", "format": "email" },
+        "profile_photo_url": { "type": ["string", "null"], "format": "uri" },
+        "university":        { "type": "string" },
+        "graduation_year":   { "type": "integer" },
+        "major":             { "type": "array", "items": { "type": "string" } },
+        "minor":             { "type": "array", "items": { "type": "string" } }
+      }
+    },
+
+    "focus_areas": {
+      "type": "array",
+      "description": "Screen 1 — What are you working on?",
+      "items": {
+        "type": "string",
+        "enum": ["startup", "research", "side_project", "open_source", "looking"]
+      }
+    },
+
+    "project": {
+      "type": ["object", "null"],
+      "description": "Screen 2 — Skipped if focus_areas is ['looking'].",
+      "properties": {
+        "one_liner": { "type": ["string", "null"] },
+        "stage":     { "type": ["string", "null"], "enum": ["idea", "mvp", "launched", "scaling", null] },
+        "industry":  { "type": "array", "items": { "type": "string" } }
+      }
+    },
+
+    "rag": {
+      "type": "object",
+      "description": "Pipeline-managed reference to this student's vector embeddings.",
+      "properties": {
+        "vector_store_id":  { "type": "string" },
+        "last_indexed_at":  { "type": ["string", "null"], "format": "date-time" }
+      }
+    },
+
+    "skills": {
+      "type": "object",
+      "description": "Screen 3 — Extracted from resume/portfolio and confirmed via questionnaire.",
+      "properties": {
+        "possessed": {
+          "type": "array",
+          "description": "Extracted by the RAG pipeline from resume and portfolio. May also include self-reported skills from the questionnaire.",
+          "items": {
+            "type": "object",
+            "required": ["name", "source"],
+            "properties": {
+              "name":   { "type": "string" },
+              "source": { "type": "string", "enum": ["resume", "portfolio", "questionnaire"] }
+            }
+          }
+        },
+        "needed": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name", "priority"],
+            "properties": {
+              "name":     { "type": "string" },
+              "priority": { "type": "string", "enum": ["must_have", "nice_to_have"] }
+            }
+          }
+        }
+      }
+    }
+
+  }
+}
