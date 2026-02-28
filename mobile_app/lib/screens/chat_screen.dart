@@ -1,0 +1,357 @@
+import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
+
+import '../theme.dart';
+
+class ChatMessage {
+  final String text;
+  final bool isMe;
+  final DateTime timestamp;
+
+  const ChatMessage({
+    required this.text,
+    required this.isMe,
+    required this.timestamp,
+  });
+}
+
+class ChatScreen extends StatefulWidget {
+  final String peerName;
+  final String peerInitials;
+
+  const ChatScreen({
+    super.key,
+    required this.peerName,
+    required this.peerInitials,
+  });
+
+  @override
+  State<ChatScreen> createState() => _ChatScreenState();
+}
+
+class _ChatScreenState extends State<ChatScreen> {
+  final TextEditingController _controller = TextEditingController();
+  final ScrollController _scrollController = ScrollController();
+  late final List<ChatMessage> _messages;
+
+  @override
+  void initState() {
+    super.initState();
+    _messages = _buildMockMessages();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  List<ChatMessage> _buildMockMessages() {
+    final now = DateTime.now();
+    return [
+      ChatMessage(
+        text: 'Hey! I saw you\'re working on something similar.',
+        isMe: false,
+        timestamp: now.subtract(const Duration(minutes: 30)),
+      ),
+      ChatMessage(
+        text: 'Yeah! I\'ve been building an MVP for the past few weeks.',
+        isMe: true,
+        timestamp: now.subtract(const Duration(minutes: 28)),
+      ),
+      ChatMessage(
+        text: 'That\'s awesome. What stack are you using?',
+        isMe: false,
+        timestamp: now.subtract(const Duration(minutes: 25)),
+      ),
+      ChatMessage(
+        text: 'Flutter for mobile, Node.js backend. You?',
+        isMe: true,
+        timestamp: now.subtract(const Duration(minutes: 23)),
+      ),
+      ChatMessage(
+        text: 'Nice! I\'m on React Native + Firebase. We should collab sometime.',
+        isMe: false,
+        timestamp: now.subtract(const Duration(minutes: 20)),
+      ),
+    ];
+  }
+
+  void _sendMessage() {
+    final text = _controller.text.trim();
+    if (text.isEmpty) return;
+
+    setState(() {
+      _messages.add(ChatMessage(
+        text: text,
+        isMe: true,
+        timestamp: DateTime.now(),
+      ));
+    });
+    _controller.clear();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scrollController.hasClients) {
+        _scrollController.animateTo(
+          _scrollController.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeOut,
+        );
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bottomPadding = MediaQuery.of(context).padding.bottom;
+
+    return Scaffold(
+      body: SafeArea(
+        bottom: false,
+        child: Column(
+          children: [
+            // ── Top bar ──
+            _ChatTopBar(
+              name: widget.peerName,
+              initials: widget.peerInitials,
+              onBack: () => Navigator.pop(context),
+            ),
+            const Divider(height: 0.5),
+            // ── Messages ──
+            Expanded(
+              child: ListView.builder(
+                controller: _scrollController,
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                itemCount: _messages.length,
+                itemBuilder: (context, index) {
+                  final msg = _messages[index];
+                  return _ChatBubble(message: msg);
+                },
+              ),
+            ),
+            // ── Input bar ──
+            _ChatInputBar(
+              controller: _controller,
+              onSend: _sendMessage,
+              bottomPadding: bottomPadding,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── Top bar ──────────────────────────────────────────────────────────────────
+
+class _ChatTopBar extends StatelessWidget {
+  final String name;
+  final String initials;
+  final VoidCallback onBack;
+
+  const _ChatTopBar({
+    required this.name,
+    required this.initials,
+    required this.onBack,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 56,
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      color: AppColors.surface,
+      child: Row(
+        children: [
+          // Back button
+          IconButton(
+            onPressed: onBack,
+            icon: const Icon(
+              Icons.arrow_back_ios_rounded,
+              size: 20,
+              color: AppColors.primary,
+            ),
+          ),
+          const SizedBox(width: 4),
+          // Avatar
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: AppColors.surfaceLightBlue,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            alignment: Alignment.center,
+            child: Text(
+              initials,
+              style: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+                color: AppColors.primary,
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          // Name
+          Expanded(
+            child: Text(
+              name,
+              style: GoogleFonts.sora(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                color: AppColors.textPrimary,
+              ),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Chat bubble ──────────────────────────────────────────────────────────────
+
+class _ChatBubble extends StatelessWidget {
+  final ChatMessage message;
+
+  const _ChatBubble({required this.message});
+
+  @override
+  Widget build(BuildContext context) {
+    final isMe = message.isMe;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Row(
+        mainAxisAlignment:
+            isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
+        children: [
+          Container(
+            constraints: BoxConstraints(
+              maxWidth: MediaQuery.of(context).size.width * 0.72,
+            ),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            decoration: BoxDecoration(
+              color: isMe ? AppColors.primary : AppColors.surfaceGray,
+              borderRadius: BorderRadius.only(
+                topLeft: const Radius.circular(20),
+                topRight: const Radius.circular(20),
+                bottomLeft: Radius.circular(isMe ? 20 : 4),
+                bottomRight: Radius.circular(isMe ? 4 : 20),
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  message.text,
+                  style: GoogleFonts.sora(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w400,
+                    color: isMe ? AppColors.onPrimary : AppColors.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  _formatTime(message.timestamp),
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: isMe
+                        ? AppColors.onPrimary.withValues(alpha: 0.5)
+                        : AppColors.textTertiary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _formatTime(DateTime dt) {
+    final h = dt.hour.toString().padLeft(2, '0');
+    final m = dt.minute.toString().padLeft(2, '0');
+    return '$h:$m';
+  }
+}
+
+// ── Input bar ────────────────────────────────────────────────────────────────
+
+class _ChatInputBar extends StatelessWidget {
+  final TextEditingController controller;
+  final VoidCallback onSend;
+  final double bottomPadding;
+
+  const _ChatInputBar({
+    required this.controller,
+    required this.onSend,
+    required this.bottomPadding,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: EdgeInsets.fromLTRB(16, 10, 16, bottomPadding + 14),
+      decoration: const BoxDecoration(
+        color: AppColors.surface,
+        border: Border(
+          top: BorderSide(color: AppColors.divider, width: 0.5),
+        ),
+      ),
+      child: Row(
+        children: [
+          // Text field
+          Expanded(
+            child: Container(
+              height: 44,
+              decoration: BoxDecoration(
+                color: AppColors.surfaceGray,
+                borderRadius: BorderRadius.circular(22),
+              ),
+              child: TextField(
+                controller: controller,
+                onSubmitted: (_) => onSend(),
+                style: GoogleFonts.sora(
+                  fontSize: 14,
+                  color: AppColors.textPrimary,
+                ),
+                decoration: InputDecoration(
+                  hintText: 'Type a message...',
+                  hintStyle: GoogleFonts.sora(
+                    fontSize: 14,
+                    color: AppColors.textTertiary,
+                  ),
+                  border: InputBorder.none,
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          // Send button
+          GestureDetector(
+            onTap: onSend,
+            child: Container(
+              width: 40,
+              height: 40,
+              decoration: const BoxDecoration(
+                color: AppColors.primary,
+                shape: BoxShape.circle,
+              ),
+              alignment: Alignment.center,
+              child: const Icon(
+                Icons.arrow_upward_rounded,
+                size: 20,
+                color: AppColors.onPrimary,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
