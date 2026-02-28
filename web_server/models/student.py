@@ -119,7 +119,7 @@ async def create_student(data: StudentCreate) -> StudentProfile:
     # Create the base doc
     doc = {
         "uid": str(uuid4()),
-        "created_at": now,
+        "created_at": now.isoformat(),
         **data.model_dump(),
     }
     
@@ -156,7 +156,7 @@ async def update_student(uid: str, data: StudentUpdate) -> Optional[StudentProfi
         return StudentProfile(**current_doc)
     
     current_doc.update(changes)
-    current_doc["updated_at"] = datetime.now(timezone.utc)
+    current_doc["updated_at"] = datetime.now(timezone.utc).isoformat()
     
     # Re-generate embeddings if relevant fields changed
     if "skills" in changes or "project" in changes:

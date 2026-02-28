@@ -129,12 +129,19 @@ def compute_match(
     weights: Weights,
 ) -> MatchScore:
     # 1. Complementarity
-    if HAS_TRANSFORMERS and isinstance(query_vecs.possessed_vec[0], float):
+    use_semantic = (
+        HAS_TRANSFORMERS
+        and len(query_vecs.possessed_vec) > 0
+        and len(cand_vecs.possessed_vec) > 0
+        and isinstance(query_vecs.possessed_vec[0], (int, float))
+        and isinstance(cand_vecs.possessed_vec[0], (int, float))
+    )
+    if use_semantic:
         # Semantic Match
         help_they_give_you = _cosine_sim(query_vecs.needed_vec, cand_vecs.possessed_vec)
         help_you_give_them = _cosine_sim(cand_vecs.needed_vec, query_vecs.possessed_vec)
     else:
-        # Fallback Keyword Match (Jaccard)
+        # Fallback Keyword Match (Jaccard) — empty/sparse or non-numeric vectors
         q_need = set(query_vecs.needed_vec)
         c_have = set(cand_vecs.possessed_vec)
         help_they_give_you = _jaccard_sim(q_need, c_have)
@@ -149,8 +156,8 @@ def compute_match(
     focus_overlap = _cosine_sim(query_vecs.focus_vec, cand_vecs.focus_vec)
 
     # 3. Industry Overlap
-    q_inds = set(query_profile.project.industry) if query_profile.project else set()
-    c_inds = set(cand_profile.project.industry) if cand_profile.project else set()
+    q_inds = set(query_profile.project.industry or []) if query_profile.project else set()
+    c_inds = set(cand_profile.project.industry or []) if cand_profile.project else set()
     industry_overlap = _jaccard_sim(q_inds, c_inds)
 
     score = (
