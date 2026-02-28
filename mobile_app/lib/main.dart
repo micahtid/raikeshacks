@@ -3,6 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 
+import 'screens/dashboard_screen.dart';
+import 'screens/onboarding_screen.dart';
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await dotenv.load(fileName: ".env");
@@ -15,7 +18,7 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'RaikeShack',
+      title: 'knkt',
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
       ),
@@ -35,6 +38,7 @@ class _AuthGateState extends State<AuthGate> {
   late final GoogleSignIn _googleSignIn;
   GoogleSignInAccount? _currentUser;
   bool _isLoading = true;
+  bool _onboardingComplete = false;
 
   @override
   void initState() {
@@ -81,6 +85,7 @@ class _AuthGateState extends State<AuthGate> {
 
   Future<void> _handleSignOut() async {
     await _googleSignIn.signOut();
+    setState(() => _onboardingComplete = false);
   }
 
   @override
@@ -104,7 +109,7 @@ class _AuthGateState extends State<AuthGate> {
               ),
               const SizedBox(height: 24),
               Text(
-                'Welcome to RaikeShack',
+                'Welcome to knkt',
                 style: Theme.of(context).textTheme.headlineSmall,
               ),
               const SizedBox(height: 8),
@@ -126,41 +131,17 @@ class _AuthGateState extends State<AuthGate> {
       );
     }
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('RaikeShack'),
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-      ),
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            if (_currentUser!.photoUrl != null)
-              CircleAvatar(
-                backgroundImage: NetworkImage(_currentUser!.photoUrl!),
-                radius: 40,
-              ),
-            const SizedBox(height: 16),
-            Text(
-              _currentUser!.displayName ?? '',
-              style: Theme.of(context).textTheme.headlineSmall,
-            ),
-            const SizedBox(height: 4),
-            Text(
-              _currentUser!.email,
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  ),
-            ),
-            const SizedBox(height: 32),
-            OutlinedButton.icon(
-              onPressed: _handleSignOut,
-              icon: const Icon(Icons.logout),
-              label: const Text('Sign Out'),
-            ),
-          ],
-        ),
-      ),
+    // Show onboarding every time the user logs in (dev mode)
+    if (!_onboardingComplete) {
+      return OnboardingScreen(
+        onComplete: () => setState(() => _onboardingComplete = true),
+        onSignOut: _handleSignOut,
+      );
+    }
+
+    return DashboardScreen(
+      userPhotoUrl: _currentUser!.photoUrl,
+      onSignOut: _handleSignOut,
     );
   }
 }
