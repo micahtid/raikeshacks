@@ -171,6 +171,7 @@ class _AuthGateState extends State<AuthGate> {
 
     return DashboardScreen(
       userPhotoUrl: _currentUser!.photoUrl,
+      displayName: displayName,
       onSignOut: _handleSignOut,
       nearbyService: _nearbyService,
     );
