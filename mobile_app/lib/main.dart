@@ -6,14 +6,12 @@ import 'package:google_sign_in/google_sign_in.dart';
 
 import 'screens/dashboard_screen.dart';
 import 'screens/onboarding_screen.dart';
-import 'services/background_service.dart';
 import 'services/nearby_service.dart';
 import 'theme.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await dotenv.load(fileName: ".env");
-  await BackgroundServiceHelper.initialize();
   runApp(const MyApp());
 }
 
