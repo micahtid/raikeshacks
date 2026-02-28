@@ -29,3 +29,8 @@ node_modules/
 # Flutter (covered by mobile_app/.gitignore but good to have at root)
 .dart_tool/
 .pub-cache/
+
+# Cursor / tooling
+specstory
+.history
+.cursorindexingignore
