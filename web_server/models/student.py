@@ -102,14 +102,24 @@ class StudentProfile(BaseModel):
 # ── CRUD ─────────────────────────────────────────────────────────────────
 
 async def create_student(data: StudentCreate) -> StudentProfile:
-    """Insert a new student profile and return the created document."""
+    """Insert a new student profile, generate embeddings, and return the created document."""
+    from services.similarity import generate_profile_embeddings
+    
     db = get_db()
     now = datetime.now(timezone.utc)
+    
+    # Create the base doc
     doc = {
         "uid": str(uuid4()),
         "created_at": now.isoformat(),
         **data.model_dump(),
     }
+    
+    # Generate embeddings based on the initial data
+    # Create a temp StudentProfile for the generator
+    temp_profile = StudentProfile(**doc)
+    doc["rag"] = generate_profile_embeddings(temp_profile)
+    
     await db.student_profiles.insert_one(doc)
     doc.pop("_id", None)  # Mongo adds _id; strip it from the response
     return StudentProfile(**doc)
@@ -125,17 +135,38 @@ async def get_student(uid: str) -> Optional[StudentProfile]:
 
 
 async def update_student(uid: str, data: StudentUpdate) -> Optional[StudentProfile]:
-    """Update fields on an existing student. Returns the updated document or None."""
+    """Update fields on an existing student and re-generate embeddings.
+    Returns the updated document or None.
+    """
+    from services.similarity import generate_profile_embeddings
+    
     db = get_db()
+    
+    # Fetch current doc to handle partial updates and embedding re-generation
+    current_doc = await db.student_profiles.find_one({"uid": uid}, {"_id": 0})
+    if current_doc is None:
+        return None
+
     changes = data.model_dump(exclude_none=True)
     if not changes:
-        return await get_student(uid)
-    changes["updated_at"] = datetime.now(timezone.utc).isoformat()
+        return StudentProfile(**current_doc)
+    
+    # Update current doc with changes locally to compute new embeddings
+    current_doc.update(changes)
+    current_doc["updated_at"] = datetime.now(timezone.utc).isoformat()
+    
+    # Re-generate embeddings if relevant fields changed
+    if "skills" in changes or "project" in changes:
+        temp_profile = StudentProfile(**current_doc)
+        current_doc["rag"] = generate_profile_embeddings(temp_profile)
+    
+    # Save the updated doc
     result = await db.student_profiles.find_one_and_update(
         {"uid": uid},
-        {"$set": changes},
+        {"$set": current_doc},
         return_document=True,
     )
+    
     if result is None:
         return None
     result.pop("_id", None)
