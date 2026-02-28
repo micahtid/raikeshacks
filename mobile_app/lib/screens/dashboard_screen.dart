@@ -3,11 +3,105 @@ import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
 
 import '../models/peer_device.dart';
 import '../services/nearby_service.dart';
 import '../theme.dart';
+import 'chat_screen.dart';
+
+// ── Mock data ────────────────────────────────────────────────────────────────
+
+enum _ConnectionState { incoming, pending, suggested, connected }
+
+class _MockUser {
+  final String id;
+  final String name;
+  final String focus;
+  final String stage;
+  final String bio;
+  final int score; // compatibility score 0-100
+  final _ConnectionState initialState;
+
+  const _MockUser({
+    required this.id,
+    required this.name,
+    required this.focus,
+    required this.stage,
+    required this.bio,
+    required this.score,
+    required this.initialState,
+  });
+}
+
+const _mockUsers = [
+  _MockUser(
+    id: '1',
+    name: 'Alex Rivera',
+    focus: 'Startup',
+    stage: 'MVP',
+    bio: 'Building a fintech platform for freelancers. Looking for co-founders with mobile dev or design chops.',
+    score: 92,
+    initialState: _ConnectionState.incoming,
+  ),
+  _MockUser(
+    id: '2',
+    name: 'Jordan Kim',
+    focus: 'Research',
+    stage: 'Idea',
+    bio: 'PhD candidate exploring NLP for accessibility tools. Always down to brainstorm over coffee.',
+    score: 87,
+    initialState: _ConnectionState.incoming,
+  ),
+  _MockUser(
+    id: '3',
+    name: 'Sam Chen',
+    focus: 'Side Project',
+    stage: 'Launched',
+    bio: 'Shipped a habit-tracking app last month. Now iterating on retention and onboarding flows.',
+    score: 78,
+    initialState: _ConnectionState.pending,
+  ),
+  _MockUser(
+    id: '4',
+    name: 'Taylor Brooks',
+    focus: 'Open Source',
+    stage: 'Scaling',
+    bio: 'Maintaining a popular Dart testing library. Interested in dev-tooling and CI/CD pipelines.',
+    score: 74,
+    initialState: _ConnectionState.pending,
+  ),
+  _MockUser(
+    id: '5',
+    name: 'Morgan Lee',
+    focus: 'Startup',
+    stage: 'Idea',
+    bio: 'Exploring the intersection of AI and education. Former teacher turned indie hacker.',
+    score: 85,
+    initialState: _ConnectionState.suggested,
+  ),
+  _MockUser(
+    id: '6',
+    name: 'Casey Patel',
+    focus: 'Side Project',
+    stage: 'MVP',
+    bio: 'Designing a local-first recipe app. Passionate about offline-capable mobile experiences.',
+    score: 69,
+    initialState: _ConnectionState.suggested,
+  ),
+  _MockUser(
+    id: '7',
+    name: 'Riley Nakamura',
+    focus: 'Research',
+    stage: 'Launched',
+    bio: 'Published a paper on mesh networking for rural connectivity. Building a proof-of-concept app.',
+    score: 81,
+    initialState: _ConnectionState.suggested,
+  ),
+];
+
+// ── Dashboard screen ─────────────────────────────────────────────────────────
 
 class DashboardScreen extends StatefulWidget {
   final String? userPhotoUrl;
@@ -31,6 +125,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
   int _selectedTab = 0;
   bool _isScanning = false;
   bool _isDeleting = false;
+
+  /// Connection state for each mock user, initialized from their defaults.
+  late final Map<String, _ConnectionState> _connectionStates = {
+    for (final u in _mockUsers) u.id: u.initialState,
+  };
 
   NearbyService get _svc => widget.nearbyService;
   String get _firstName => widget.displayName.split(' ').first;
@@ -134,6 +233,33 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
+  void _acceptMockUser(String id) {
+    setState(() => _connectionStates[id] = _ConnectionState.connected);
+  }
+
+  void _connectMockUser(String id) {
+    setState(() => _connectionStates[id] = _ConnectionState.pending);
+  }
+
+  void _pushChatScreen(_MockUser user) {
+    final parts = user.name.trim().split(RegExp(r'\s+'));
+    final initials = parts.length >= 2
+        ? '${parts[0][0]}${parts[1][0]}'.toUpperCase()
+        : user.name.isNotEmpty
+            ? user.name[0].toUpperCase()
+            : '?';
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ChatScreen(
+          peerName: user.name,
+          peerInitials: initials,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -149,7 +275,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
               duration: const Duration(milliseconds: 200),
               child: _selectedTab == 0
                   ? _buildDashboardContent(theme)
-                  : _buildProfileContent(theme),
+                  : _selectedTab == 1
+                      ? _buildChatContent(theme)
+                      : _buildProfileContent(theme),
             ),
           ),
           // Floating glass nav bar
@@ -169,12 +297,88 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   // ── Dashboard tab ──────────────────────────────────────────────────────
 
+  Widget _buildSection(
+    ThemeData theme,
+    String title,
+    List<_MockUser> users,
+  ) {
+    if (users.isEmpty) return const SizedBox.shrink();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(
+            AppSpacing.screenPadding, 20, AppSpacing.screenPadding, 10,
+          ),
+          child: Row(
+            children: [
+              Text(
+                title,
+                style: theme.textTheme.titleSmall?.copyWith(
+                  color: AppColors.textTertiary,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                decoration: BoxDecoration(
+                  color: AppColors.textPrimary.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Text(
+                  '${users.length}',
+                  style: const TextStyle(
+                    color: AppColors.textPrimary,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        ...users.map((user) {
+          final state = _connectionStates[user.id]!;
+          return Padding(
+            padding: const EdgeInsets.fromLTRB(
+              AppSpacing.screenPadding, 0, AppSpacing.screenPadding, 10,
+            ),
+            child: _MockProfileCard(
+              user: user,
+              state: state,
+              onTap: () => _showProfileSheet(user),
+              onChat: () => _pushChatScreen(user),
+            ),
+          );
+        }),
+      ],
+    );
+  }
+
   Widget _buildDashboardContent(ThemeData theme) {
     final peers = _svc.discoveredPeers.values.toList();
 
-    return Column(
+    // Requests: incoming (not yet accepted)
+    final requests = _mockUsers
+        .where((u) => _connectionStates[u.id] == _ConnectionState.incoming)
+        .toList();
+
+    // Connected: mutually accepted (from any original section)
+    final connected = _mockUsers
+        .where((u) => _connectionStates[u.id] == _ConnectionState.connected)
+        .toList();
+
+    // Discover: suggested + pending outgoing
+    final discover = _mockUsers.where((u) {
+      final s = _connectionStates[u.id]!;
+      return s == _ConnectionState.suggested ||
+          s == _ConnectionState.pending;
+    }).toList();
+
+    return ListView(
       key: const ValueKey('dashboard'),
-      crossAxisAlignment: CrossAxisAlignment.start,
+      padding: const EdgeInsets.only(bottom: 100),
       children: [
         // Welcome header
         Padding(
@@ -204,24 +408,269 @@ class _DashboardScreenState extends State<DashboardScreen> {
               receivedWord: _svc.receivedSecretWord,
             ),
           ),
-        const SizedBox(height: 8),
-        // Nearby peers list
-        Expanded(
-          child: peers.isEmpty
-              ? _EmptyState(isScanning: _isScanning)
-              : ListView.builder(
-                  padding: const EdgeInsets.fromLTRB(
-                    AppSpacing.screenPadding, 0, AppSpacing.screenPadding, 100,
+        // Nearby Bluetooth peers
+        if (peers.isNotEmpty) ...[
+          Padding(
+            padding: const EdgeInsets.fromLTRB(
+              AppSpacing.screenPadding, 20, AppSpacing.screenPadding, 8,
+            ),
+            child: Text(
+              'Nearby',
+              style: theme.textTheme.titleSmall?.copyWith(
+                color: AppColors.textTertiary,
+              ),
+            ),
+          ),
+          ...peers.map((peer) {
+            final isConnected = peer.endpointId == _svc.connectedEndpointId;
+            return Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppSpacing.screenPadding,
+              ),
+              child: _PeerTile(
+                peer: peer,
+                isConnected: isConnected,
+                theme: theme,
+              ),
+            );
+          }),
+        ],
+        // ── Profile card sections ──
+        _buildSection(theme, 'Connected', connected),
+        _buildSection(theme, 'Requests', requests),
+        _buildSection(theme, 'Discover', discover),
+        const SizedBox(height: 20),
+      ],
+    );
+  }
+
+  // ── Profile bottom sheet ──────────────────────────────────────────────
+
+  void _showProfileSheet(_MockUser user) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (ctx) {
+        final state = _connectionStates[user.id]!;
+        final parts = user.name.trim().split(RegExp(r'\s+'));
+        final initials = parts.length >= 2
+            ? '${parts[0][0]}${parts[1][0]}'.toUpperCase()
+            : user.name.isNotEmpty
+                ? user.name[0].toUpperCase()
+                : '?';
+
+        String buttonLabel;
+        bool buttonEnabled;
+        Color buttonColor;
+        VoidCallback? buttonAction;
+
+        switch (state) {
+          case _ConnectionState.incoming:
+            buttonLabel = 'Accept';
+            buttonEnabled = true;
+            buttonColor = AppColors.primary;
+            buttonAction = () {
+              _acceptMockUser(user.id);
+              Navigator.pop(ctx);
+            };
+          case _ConnectionState.pending:
+            buttonLabel = 'Pending';
+            buttonEnabled = false;
+            buttonColor = AppColors.inactive;
+            buttonAction = null;
+          case _ConnectionState.suggested:
+            buttonLabel = 'Connect';
+            buttonEnabled = true;
+            buttonColor = AppColors.primary;
+            buttonAction = () {
+              _connectMockUser(user.id);
+              Navigator.pop(ctx);
+            };
+          case _ConnectionState.connected:
+            buttonLabel = 'Connected';
+            buttonEnabled = false;
+            buttonColor = AppColors.inactive;
+            buttonAction = null;
+        }
+
+        return Container(
+          margin: const EdgeInsets.fromLTRB(12, 0, 12, 24),
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            color: AppColors.surfaceGray,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: AppColors.border, width: 0.5),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Avatar
+              Container(
+                width: 64,
+                height: 64,
+                decoration: BoxDecoration(
+                  color: AppColors.surfaceLightBlue,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                alignment: Alignment.center,
+                child: Text(
+                  initials,
+                  style: const TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.textPrimary,
                   ),
-                  itemCount: peers.length,
+                ),
+              ),
+              const SizedBox(height: 16),
+              // Name
+              Text(
+                user.name,
+                style: GoogleFonts.sora(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.textPrimary,
+                ),
+              ),
+              const SizedBox(height: 8),
+              // Focus + Stage row
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    _MockProfileCard._focusIcons[user.focus] ??
+                        Icons.work_rounded,
+                    size: 14,
+                    color: AppColors.textTertiary,
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    user.focus,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  Icon(
+                    _MockProfileCard._stageIcons[user.stage] ??
+                        Icons.flag_rounded,
+                    size: 14,
+                    color: AppColors.textTertiary,
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    user.stage,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              // Bio
+              Text(
+                user.bio,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontSize: 13,
+                  height: 1.5,
+                  color: AppColors.textSecondary,
+                ),
+              ),
+              const SizedBox(height: 24),
+              // Action button
+              SizedBox(
+                width: double.infinity,
+                height: AppSpacing.buttonHeight,
+                child: FilledButton(
+                  onPressed: buttonEnabled ? buttonAction : null,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: buttonColor,
+                    foregroundColor: buttonEnabled
+                        ? AppColors.onPrimary
+                        : AppColors.textTertiary,
+                    shape: RoundedRectangleBorder(
+                      borderRadius:
+                          BorderRadius.circular(AppRadius.button),
+                    ),
+                  ),
+                  child: Text(
+                    buttonLabel,
+                    style: GoogleFonts.sora(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  // ── Chat tab ─────────────────────────────────────────────────────────
+
+  Widget _buildChatContent(ThemeData theme) {
+    final connectedUsers = _mockUsers
+        .where((u) => _connectionStates[u.id] == _ConnectionState.connected)
+        .toList();
+
+    return Column(
+      key: const ValueKey('chat'),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(
+            AppSpacing.screenPadding, 24, AppSpacing.screenPadding, 16,
+          ),
+          child: Text('Messages', style: theme.textTheme.headlineSmall),
+        ),
+        Expanded(
+          child: connectedUsers.isEmpty
+              ? Center(
+                  child: Padding(
+                    padding: const EdgeInsets.only(bottom: 80),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(
+                          Icons.chat_bubble_outline_rounded,
+                          size: 48,
+                          color: AppColors.textTertiary,
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          'No conversations yet',
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Connect with people to start chatting',
+                          style: theme.textTheme.bodySmall,
+                        ),
+                      ],
+                    ),
+                  ),
+                )
+              : ListView.separated(
+                  padding: const EdgeInsets.fromLTRB(0, 0, 0, 100),
+                  itemCount: connectedUsers.length,
+                  separatorBuilder: (context, index) => const Divider(
+                    height: 0.5,
+                    indent: AppSpacing.screenPadding + 56,
+                  ),
                   itemBuilder: (context, index) {
-                    final peer = peers[index];
-                    final isConnected =
-                        peer.endpointId == _svc.connectedEndpointId;
-                    return _PeerTile(
-                      peer: peer,
-                      isConnected: isConnected,
-                      theme: theme,
+                    final user = connectedUsers[index];
+                    return _ChatListTile(
+                      user: user,
+                      onTap: () => _pushChatScreen(user),
                     );
                   },
                 ),
@@ -321,6 +770,259 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 }
 
+// ── Mock profile card ────────────────────────────────────────────────────────
+
+class _MockProfileCard extends StatelessWidget {
+  final _MockUser user;
+  final _ConnectionState state;
+  final VoidCallback onTap;
+  final VoidCallback? onChat;
+
+  const _MockProfileCard({
+    required this.user,
+    required this.state,
+    required this.onTap,
+    this.onChat,
+  });
+
+  String get _initials {
+    final parts = user.name.trim().split(RegExp(r'\s+'));
+    if (parts.length >= 2) {
+      return '${parts[0][0]}${parts[1][0]}'.toUpperCase();
+    }
+    return user.name.isNotEmpty ? user.name[0].toUpperCase() : '?';
+  }
+
+  static const _focusIcons = <String, IconData>{
+    'Startup': Icons.rocket_launch_rounded,
+    'Research': Icons.science_rounded,
+    'Side Project': Icons.handyman_rounded,
+    'Open Source': Icons.public_rounded,
+  };
+
+  static const _stageIcons = <String, IconData>{
+    'Idea': Icons.lightbulb_rounded,
+    'MVP': Icons.construction_rounded,
+    'Launched': Icons.rocket_rounded,
+    'Scaling': Icons.trending_up_rounded,
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: AppColors.surfaceGray,
+          borderRadius: BorderRadius.circular(AppRadius.card),
+          border: Border.all(color: AppColors.border, width: 0.5),
+        ),
+        child: Row(
+          children: [
+            // Avatar
+            Container(
+              width: 46,
+              height: 46,
+              decoration: BoxDecoration(
+                color: AppColors.surfaceLightBlue,
+                borderRadius: BorderRadius.circular(14),
+              ),
+              alignment: Alignment.center,
+              child: Text(
+                _initials,
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.textPrimary,
+                ),
+              ),
+            ),
+            const SizedBox(width: 14),
+            // Info
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          user.name,
+                          style: GoogleFonts.sora(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.textPrimary,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      // Pending chip
+                      if (state == _ConnectionState.pending) ...[
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 3,
+                          ),
+                          decoration: BoxDecoration(
+                            color: AppColors.textTertiary
+                                .withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: const Text(
+                            'Pending',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: AppColors.textTertiary,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  // Compatibility score
+                  Text(
+                    '${user.score}% match',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            // Chat icon — only visible when connected (rounded rectangle)
+            if (state == _ConnectionState.connected) ...[
+              const SizedBox(width: 8),
+              GestureDetector(
+                onTap: onChat,
+                child: Container(
+                  width: 38,
+                  height: 38,
+                  decoration: const BoxDecoration(
+                    color: AppColors.primary,
+                    shape: BoxShape.circle,
+                  ),
+                  alignment: Alignment.center,
+                  child: const Icon(
+                    Icons.chat_bubble_rounded,
+                    size: 18,
+                    color: AppColors.onPrimary,
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── Chat list tile ───────────────────────────────────────────────────────
+
+class _ChatListTile extends StatelessWidget {
+  final _MockUser user;
+  final VoidCallback onTap;
+
+  const _ChatListTile({required this.user, required this.onTap});
+
+  static const _lastMessages = <String, String>{
+    '1': 'We should collab sometime.',
+    '2': 'Sounds great, let me know!',
+    '3': 'Just shipped a new build.',
+    '4': 'PR is up for review.',
+    '5': 'Let me know if you want to chat about AI!',
+    '6': 'Offline-first is the way to go.',
+    '7': 'Mesh networking is wild stuff.',
+  };
+
+  String get _initials {
+    final parts = user.name.trim().split(RegExp(r'\s+'));
+    if (parts.length >= 2) {
+      return '${parts[0][0]}${parts[1][0]}'.toUpperCase();
+    }
+    return user.name.isNotEmpty ? user.name[0].toUpperCase() : '?';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final preview = _lastMessages[user.id] ?? 'Tap to start chatting';
+
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.screenPadding,
+          vertical: 14,
+        ),
+        child: Row(
+          children: [
+            // Avatar
+            Container(
+              width: 46,
+              height: 46,
+              decoration: BoxDecoration(
+                color: AppColors.surfaceLightBlue,
+                borderRadius: BorderRadius.circular(14),
+              ),
+              alignment: Alignment.center,
+              child: Text(
+                _initials,
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.textPrimary,
+                ),
+              ),
+            ),
+            const SizedBox(width: 14),
+            // Name + preview
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    user.name,
+                    style: GoogleFonts.sora(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    preview,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      color: AppColors.textSecondary,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            // Timestamp
+            Text(
+              '2m ago',
+              style: const TextStyle(
+                fontSize: 11,
+                color: AppColors.textTertiary,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 // ── Glass morphism nav bar ────────────────────────────────────────────────
 
 class _GlassNavBar extends StatelessWidget {
@@ -364,10 +1066,16 @@ class _GlassNavBar extends StatelessWidget {
                 onTap: () => onTap(0),
               ),
               _NavBarItem(
-                icon: Icons.person_rounded,
-                label: 'Profile',
+                icon: Icons.chat_bubble_rounded,
+                label: 'Chat',
                 isSelected: selectedIndex == 1,
                 onTap: () => onTap(1),
+              ),
+              _NavBarItem(
+                icon: Icons.person_rounded,
+                label: 'Profile',
+                isSelected: selectedIndex == 2,
+                onTap: () => onTap(2),
               ),
             ],
           ),
@@ -468,11 +1176,11 @@ class _StatusBanner extends StatelessWidget {
                     ? AppColors.textPrimary
                     : AppColors.textSecondary,
               ),
-              maxLines: 2,
+              maxLines: 1,
               overflow: TextOverflow.ellipsis,
             ),
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: 14),
           GestureDetector(
             onTap: onToggle,
             child: Container(
@@ -563,45 +1271,6 @@ class _ConnectedCard extends StatelessWidget {
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-// ── Empty state ───────────────────────────────────────────────────────────
-
-class _EmptyState extends StatelessWidget {
-  final bool isScanning;
-
-  const _EmptyState({required this.isScanning});
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.only(bottom: 80),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              isScanning
-                  ? Icons.bluetooth_searching
-                  : Icons.bluetooth_disabled,
-              size: 48,
-              color: AppColors.textTertiary,
-            ),
-            const SizedBox(height: 16),
-            Text(
-              isScanning
-                  ? 'Scanning for nearby people\u2026'
-                  : 'Tap Scan to find people nearby',
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: AppColors.textSecondary,
-              ),
-            ),
-          ],
-        ),
       ),
     );
   }

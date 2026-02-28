@@ -7,9 +7,9 @@ abstract final class AppColors {
   static const Color onPrimary = Color(0xFF242422);
 
   // Text hierarchy
-  static const Color textPrimary = Color(0xFFC2C0B6);
-  static const Color textSecondary = Color(0xFF8A8880);
-  static const Color textTertiary = Color(0xFF5E5D58);
+  static const Color textPrimary = Color(0xFFEAE8E3);
+  static const Color textSecondary = Color(0xFFA5A39B);
+  static const Color textTertiary = Color(0xFF6E6D68);
 
   // Surfaces
   static const Color surface = Color(0xFF262624);
@@ -23,7 +23,7 @@ abstract final class AppColors {
   static const Color inactive = Color(0xFF4A4A46);
 
   // Icons
-  static const Color icon = Color(0xFFC2C0B6);
+  static const Color icon = Color(0xFFEAE8E3);
 
   // Danger
   static const Color danger = Color(0xFFE85D5D);
