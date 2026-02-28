@@ -6,11 +6,14 @@ import 'package:google_sign_in/google_sign_in.dart';
 
 import 'screens/dashboard_screen.dart';
 import 'screens/onboarding_screen.dart';
+import 'services/background_service.dart';
+import 'services/nearby_service.dart';
 import 'theme.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await dotenv.load(fileName: ".env");
+  await BackgroundServiceHelper.initialize();
   runApp(const MyApp());
 }
 
@@ -36,6 +39,7 @@ class AuthGate extends StatefulWidget {
 
 class _AuthGateState extends State<AuthGate> {
   late final GoogleSignIn _googleSignIn;
+  final NearbyService _nearbyService = NearbyService();
   GoogleSignInAccount? _currentUser;
   bool _isLoading = true;
   bool _onboardingComplete = false;
@@ -84,8 +88,15 @@ class _AuthGateState extends State<AuthGate> {
   }
 
   Future<void> _handleSignOut() async {
+    await _nearbyService.stopAll();
     await _googleSignIn.signOut();
     setState(() => _onboardingComplete = false);
+  }
+
+  @override
+  void dispose() {
+    _nearbyService.dispose();
+    super.dispose();
   }
 
   @override
@@ -154,9 +165,16 @@ class _AuthGateState extends State<AuthGate> {
       );
     }
 
+    // Set the display name from the Google account for Nearby Connections.
+    final displayName = _currentUser!.displayName ?? _currentUser!.email;
+    if (_nearbyService.displayName != displayName) {
+      _nearbyService.setDisplayName(displayName);
+    }
+
     return DashboardScreen(
       userPhotoUrl: _currentUser!.photoUrl,
       onSignOut: _handleSignOut,
+      nearbyService: _nearbyService,
     );
   }
 }
