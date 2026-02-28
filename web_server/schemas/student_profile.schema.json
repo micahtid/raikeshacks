@@ -49,8 +49,18 @@
       "type": "object",
       "description": "Pipeline-managed reference to this student's vector embeddings.",
       "properties": {
-        "possessed_vector": { "type": "array", "items": { "type": ["number", "string"] } },
-        "needed_vector":    { "type": "array", "items": { "type": ["number", "string"] } },
+        "possessed_vector": {
+          "oneOf": [
+            { "type": "array", "items": { "type": "number" } },
+            { "type": "array", "items": { "type": "string" } }
+          ]
+        },
+        "needed_vector": {
+          "oneOf": [
+            { "type": "array", "items": { "type": "number" } },
+            { "type": "array", "items": { "type": "string" } }
+          ]
+        },
         "last_indexed_at":  { "type": ["string", "null"], "format": "date-time" }
       }
     },
