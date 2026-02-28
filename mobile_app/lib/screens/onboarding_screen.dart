@@ -1,6 +1,8 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
+import '../theme.dart';
+
 class OnboardingScreen extends StatefulWidget {
   final VoidCallback onComplete;
   final VoidCallback onSignOut;
@@ -124,148 +126,151 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     final safeStep = _currentStep.clamp(0, steps.length - 1);
     final step = steps[safeStep];
     final theme = Theme.of(context);
-    final colors = theme.colorScheme;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Get Started'),
-        backgroundColor: colors.inversePrimary,
-        actions: [
-          TextButton(
-            onPressed: widget.onSignOut,
-            child: const Text('Sign Out'),
-          ),
-        ],
-      ),
-      body: Column(
-        children: [
-          // Progress bar
-          LinearProgressIndicator(
-            value: (safeStep + 1) / steps.length,
-            backgroundColor: colors.surfaceContainerHighest,
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: Text(
-                'Step ${safeStep + 1} of ${steps.length}',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: colors.onSurfaceVariant,
-                ),
+      body: SafeArea(
+        child: Column(
+          children: [
+            // Top bar with sign out
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                AppSpacing.screenPadding, 16, 8, 0,
               ),
-            ),
-          ),
-          // Content
-          Expanded(
-            child: AnimatedSwitcher(
-              duration: const Duration(milliseconds: 250),
-              child: KeyedSubtree(
-                key: ValueKey(step),
-                child: _buildStep(step, theme, colors),
-              ),
-            ),
-          ),
-          // Navigation buttons
-          SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
               child: Row(
                 children: [
                   if (safeStep > 0)
-                    OutlinedButton(
-                      onPressed: _back,
-                      child: const Text('Back'),
-                    )
-                  else
-                    const SizedBox.shrink(),
-                  const Spacer(),
-                  FilledButton(
-                    onPressed: _next,
-                    child: Text(
-                      safeStep == steps.length - 1 ? 'Finish' : 'Next',
+                    GestureDetector(
+                      onTap: _back,
+                      child: const Icon(
+                        Icons.arrow_back_ios_new,
+                        size: 20,
+                        color: AppColors.primary,
+                      ),
                     ),
+                  const Spacer(),
+                  TextButton(
+                    onPressed: widget.onSignOut,
+                    child: const Text('Sign Out'),
                   ),
                 ],
               ),
             ),
-          ),
-        ],
+            // Progress bar
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                AppSpacing.screenPadding, 12, AppSpacing.screenPadding, 32,
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(AppRadius.progressBar),
+                child: LinearProgressIndicator(
+                  value: (safeStep + 1) / steps.length,
+                  minHeight: AppSpacing.progressBarHeight,
+                ),
+              ),
+            ),
+            // Content
+            Expanded(
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 250),
+                layoutBuilder: (currentChild, previousChildren) {
+                  return Stack(
+                    alignment: Alignment.topCenter,
+                    children: [
+                      ...previousChildren,
+                      if (currentChild != null) currentChild,
+                    ],
+                  );
+                },
+                child: KeyedSubtree(
+                  key: ValueKey(step),
+                  child: _buildStep(step, theme),
+                ),
+              ),
+            ),
+            // Bottom CTA
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                AppSpacing.screenPadding,
+                8,
+                AppSpacing.screenPadding,
+                AppSpacing.screenPadding,
+              ),
+              child: FilledButton(
+                onPressed: _next,
+                child: Text(
+                  safeStep == steps.length - 1 ? 'Finish' : 'Next',
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
 
-  Widget _buildStep(_Step step, ThemeData theme, ColorScheme colors) {
+  Widget _buildStep(_Step step, ThemeData theme) {
     return switch (step) {
-      _Step.resume => _buildResumeStep(theme, colors),
-      _Step.focus => _buildFocusStep(theme, colors),
-      _Step.project => _buildProjectStep(theme, colors),
-      _Step.skills => _buildSkillsStep(theme, colors),
+      _Step.resume => _buildResumeStep(theme),
+      _Step.focus => _buildFocusStep(theme),
+      _Step.project => _buildProjectStep(theme),
+      _Step.skills => _buildSkillsStep(theme),
     };
   }
 
   // ── Resume ──────────────────────────────────────────────────────────
 
-  Widget _buildResumeStep(ThemeData theme, ColorScheme colors) {
+  Widget _buildResumeStep(ThemeData theme) {
     final hasFile = _resumeFileName != null;
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.screenPadding),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Drop your resume here', style: theme.textTheme.headlineSmall),
-          const SizedBox(height: 8),
+          Text(
+            'Drop your resume\nhere',
+            style: theme.textTheme.headlineSmall,
+          ),
+          const SizedBox(height: AppSpacing.sectionGapSmall),
           Text(
             'No pressure — just helps us get to know you faster.',
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: colors.onSurfaceVariant,
-            ),
+            style: theme.textTheme.bodyMedium,
           ),
-          const SizedBox(height: 32),
-          Material(
-            color: hasFile ? colors.primaryContainer : colors.surfaceContainerLow,
-            borderRadius: BorderRadius.circular(16),
-            child: InkWell(
-              onTap: _pickResume,
-              borderRadius: BorderRadius.circular(16),
+          const SizedBox(height: AppSpacing.sectionGapLarge),
+          GestureDetector(
+            onTap: _pickResume,
+            child: CustomPaint(
+              painter: _DashedBorderPainter(
+                color: hasFile ? AppColors.primary : AppColors.border,
+                strokeWidth: hasFile ? 1.5 : 1,
+                radius: 16,
+                dashLength: 8,
+                gapLength: 5,
+              ),
               child: Container(
                 width: double.infinity,
                 padding: const EdgeInsets.symmetric(vertical: 48),
                 decoration: BoxDecoration(
-                  border: Border.all(
-                    color: hasFile ? colors.primary : colors.outlineVariant,
-                    width: hasFile ? 2 : 1,
-                  ),
+                  color: hasFile ? AppColors.surfaceLightBlue : AppColors.surfaceGray,
                   borderRadius: BorderRadius.circular(16),
                 ),
                 child: Column(
                   children: [
                     Icon(
-                      hasFile ? Icons.description : Icons.upload_file,
+                      hasFile ? Icons.description_rounded : Icons.upload_file_rounded,
                       size: 48,
-                      color: hasFile
-                          ? colors.onPrimaryContainer
-                          : colors.onSurfaceVariant,
+                      color: hasFile ? AppColors.primary : AppColors.textTertiary,
                     ),
                     const SizedBox(height: 16),
                     Text(
                       hasFile ? _resumeFileName! : 'Tap to upload your resume',
-                      style: theme.textTheme.bodyLarge?.copyWith(
-                        color: hasFile
-                            ? colors.onPrimaryContainer
-                            : colors.onSurfaceVariant,
-                        fontWeight:
-                            hasFile ? FontWeight.w600 : FontWeight.normal,
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        color: hasFile ? AppColors.primary : AppColors.textSecondary,
                       ),
                     ),
                     const SizedBox(height: 4),
                     Text(
                       hasFile ? 'Tap to change file' : 'PDF, DOC, or DOCX',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: hasFile
-                            ? colors.onPrimaryContainer
-                            : colors.onSurfaceVariant,
-                      ),
+                      style: theme.textTheme.bodySmall,
                     ),
                   ],
                 ),
@@ -276,25 +281,25 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             const SizedBox(height: 16),
             Row(
               children: [
-                Icon(Icons.check_circle, color: colors.primary, size: 20),
+                const Icon(Icons.check_circle, color: AppColors.primary, size: 20),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
                     _resumeFileName!,
                     style: theme.textTheme.bodyMedium?.copyWith(
-                      color: colors.primary,
+                      color: AppColors.primary,
                     ),
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
-                IconButton(
-                  icon: Icon(Icons.close, size: 20, color: colors.error),
-                  onPressed: () => setState(() => _resumeFileName = null),
+                GestureDetector(
+                  onTap: () => setState(() => _resumeFileName = null),
+                  child: const Icon(Icons.close, size: 20, color: AppColors.textTertiary),
                 ),
               ],
             ),
           ],
-          const SizedBox(height: 24),
+          const SizedBox(height: AppSpacing.sectionGapSmall),
           Center(
             child: TextButton(
               onPressed: _next,
@@ -308,42 +313,41 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
   // ── Focus ───────────────────────────────────────────────────────────
 
-  Widget _buildFocusStep(ThemeData theme, ColorScheme colors) {
+  Widget _buildFocusStep(ThemeData theme) {
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.screenPadding),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text("What's keeping you busy?",
-              style: theme.textTheme.headlineSmall),
-          const SizedBox(height: 8),
+          Text(
+            "What's keeping\nyou busy?",
+            style: theme.textTheme.headlineSmall,
+          ),
+          const SizedBox(height: AppSpacing.sectionGapSmall),
           Text(
             'Pick as many as you like.',
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: colors.onSurfaceVariant,
-            ),
+            style: theme.textTheme.bodyMedium,
           ),
-          const SizedBox(height: 24),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: _focusOptions.map((option) {
-              final selected = _selectedFocuses.contains(option);
-              return FilterChip(
-                label: Text(option),
+          const SizedBox(height: AppSpacing.sectionGapMedium),
+          ..._focusOptions.map((option) {
+            final selected = _selectedFocuses.contains(option);
+            return Padding(
+              padding: const EdgeInsets.only(bottom: AppSpacing.listItemGap),
+              child: _SelectionItem(
+                label: option,
                 selected: selected,
-                onSelected: (val) {
+                onTap: () {
                   setState(() {
-                    if (val) {
-                      _selectedFocuses.add(option);
-                    } else {
+                    if (selected) {
                       _selectedFocuses.remove(option);
+                    } else {
+                      _selectedFocuses.add(option);
                     }
                   });
                 },
-              );
-            }).toList(),
-          ),
+              ),
+            );
+          }),
         ],
       ),
     );
@@ -351,81 +355,80 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
   // ── Project ─────────────────────────────────────────────────────────
 
-  Widget _buildProjectStep(ThemeData theme, ColorScheme colors) {
+  Widget _buildProjectStep(ThemeData theme) {
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.screenPadding),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text("Let's hear about your project",
-              style: theme.textTheme.headlineSmall),
-          const SizedBox(height: 24),
+          Text(
+            "Let's hear about\nyour project",
+            style: theme.textTheme.headlineSmall,
+          ),
+          const SizedBox(height: AppSpacing.sectionGapMedium),
           // One-liner
-          Text('Sum it up in a sentence', style: theme.textTheme.titleMedium),
+          Text('Sum it up in a sentence', style: theme.textTheme.titleSmall),
           const SizedBox(height: 8),
           TextField(
             controller: _projectController,
             decoration: const InputDecoration(
               hintText: 'e.g. "Airbnb for lab equipment"',
-              border: OutlineInputBorder(),
             ),
             textInputAction: TextInputAction.done,
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: AppSpacing.sectionGapMedium),
           // Stage
-          Text('Where are things at?', style: theme.textTheme.titleMedium),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: _stageOptions.map((stage) {
-              return ChoiceChip(
-                label: Text(stage),
-                selected: _selectedStage == stage,
-                onSelected: (val) {
-                  setState(() => _selectedStage = val ? stage : null);
+          Text('Where are things at?', style: theme.textTheme.titleSmall),
+          const SizedBox(height: 12),
+          ..._stageOptions.map((stage) {
+            final selected = _selectedStage == stage;
+            return Padding(
+              padding: const EdgeInsets.only(bottom: AppSpacing.listItemGap),
+              child: _SelectionItem(
+                label: stage,
+                selected: selected,
+                onTap: () {
+                  setState(() => _selectedStage = selected ? null : stage);
                 },
-              );
-            }).toList(),
-          ),
-          const SizedBox(height: 24),
+              ),
+            );
+          }),
+          const SizedBox(height: AppSpacing.sectionGapSmall),
           // Domain / industry
-          Text('What space are you in?',
-              style: theme.textTheme.titleMedium),
-          const SizedBox(height: 8),
+          Text('What space are you in?', style: theme.textTheme.titleSmall),
+          const SizedBox(height: 12),
           Wrap(
             spacing: 8,
             runSpacing: 8,
             children: [
               ..._domainSuggestions.map((domain) {
                 final selected = _selectedDomains.contains(domain);
-                return FilterChip(
-                  label: Text(domain),
+                return _DomainChip(
+                  label: domain,
                   selected: selected,
-                  onSelected: (val) {
+                  onTap: () {
                     setState(() {
-                      if (val) {
-                        _selectedDomains.add(domain);
-                      } else {
+                      if (selected) {
                         _selectedDomains.remove(domain);
+                      } else {
+                        _selectedDomains.add(domain);
                       }
                     });
                   },
                 );
               }),
-              // Custom domains the user typed in
               ..._selectedDomains
                   .where((d) => !_domainSuggestions.contains(d))
                   .map((domain) {
-                return Chip(
-                  label: Text(domain),
-                  onDeleted: () =>
-                      setState(() => _selectedDomains.remove(domain)),
+                return _DomainChip(
+                  label: domain,
+                  selected: true,
+                  onTap: () => setState(() => _selectedDomains.remove(domain)),
                 );
               }),
             ],
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 12),
           Row(
             children: [
               Expanded(
@@ -433,20 +436,27 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                   controller: _domainController,
                   decoration: const InputDecoration(
                     hintText: 'Add custom domain...',
-                    border: OutlineInputBorder(),
-                    isDense: true,
                   ),
                   textInputAction: TextInputAction.done,
                   onSubmitted: _addDomain,
                 ),
               ),
               const SizedBox(width: 8),
-              IconButton.filled(
-                onPressed: () => _addDomain(_domainController.text),
-                icon: const Icon(Icons.add),
+              GestureDetector(
+                onTap: () => _addDomain(_domainController.text),
+                child: Container(
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(
+                    color: AppColors.primary,
+                    borderRadius: BorderRadius.circular(AppRadius.button),
+                  ),
+                  child: const Icon(Icons.add, color: AppColors.onPrimary),
+                ),
               ),
             ],
           ),
+          const SizedBox(height: AppSpacing.screenPadding),
         ],
       ),
     );
@@ -454,19 +464,19 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
   // ── Skills ──────────────────────────────────────────────────────────
 
-  Widget _buildSkillsStep(ThemeData theme, ColorScheme colors) {
+  Widget _buildSkillsStep(ThemeData theme) {
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.screenPadding),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text("Almost there!", style: theme.textTheme.headlineSmall),
-          const SizedBox(height: 24),
+          const SizedBox(height: AppSpacing.sectionGapMedium),
           Text(
             "What are you great at?",
-            style: theme.textTheme.titleMedium,
+            style: theme.textTheme.titleSmall,
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 12),
           _buildTagInput(
             controller: _mySkillsController,
             tags: _mySkills,
@@ -474,12 +484,12 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             onAdd: () => _addSkill(_mySkillsController, _mySkills),
             onRemove: (tag) => setState(() => _mySkills.remove(tag)),
           ),
-          const SizedBox(height: 32),
+          const SizedBox(height: AppSpacing.sectionGapMedium),
           Text(
-            "What would your dream collaborator bring?",
-            style: theme.textTheme.titleMedium,
+            "What would your dream\ncollaborator bring?",
+            style: theme.textTheme.titleSmall,
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 12),
           _buildTagInput(
             controller: _seekingSkillsController,
             tags: _seekingSkills,
@@ -487,6 +497,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             onAdd: () => _addSkill(_seekingSkillsController, _seekingSkills),
             onRemove: (tag) => setState(() => _seekingSkills.remove(tag)),
           ),
+          const SizedBox(height: AppSpacing.screenPadding),
         ],
       ),
     );
@@ -509,36 +520,208 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             spacing: 8,
             runSpacing: 8,
             children: tags
-                .map((tag) => Chip(
-                      label: Text(tag),
-                      onDeleted: () => onRemove(tag),
+                .map((tag) => Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
+                      decoration: BoxDecoration(
+                        color: AppColors.surfaceLightBlue,
+                        borderRadius: BorderRadius.circular(AppRadius.button),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            tag,
+                            style: const TextStyle(
+                              fontSize: 14,
+                              color: AppColors.textPrimary,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          GestureDetector(
+                            onTap: () => onRemove(tag),
+                            child: const Icon(
+                              Icons.close,
+                              size: 16,
+                              color: AppColors.textSecondary,
+                            ),
+                          ),
+                        ],
+                      ),
                     ))
                 .toList(),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 12),
         ],
         Row(
           children: [
             Expanded(
               child: TextField(
                 controller: controller,
-                decoration: InputDecoration(
-                  hintText: hint,
-                  border: const OutlineInputBorder(),
-                  isDense: true,
-                ),
+                decoration: InputDecoration(hintText: hint),
                 textInputAction: TextInputAction.done,
                 onSubmitted: (_) => onAdd(),
               ),
             ),
             const SizedBox(width: 8),
-            IconButton.filled(
-              onPressed: onAdd,
-              icon: const Icon(Icons.add),
+            GestureDetector(
+              onTap: onAdd,
+              child: Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: AppColors.primary,
+                  borderRadius: BorderRadius.circular(AppRadius.button),
+                ),
+                child: const Icon(Icons.add, color: AppColors.onPrimary),
+              ),
             ),
           ],
         ),
       ],
+    );
+  }
+}
+
+// ── Selection item (replaces FilterChip / ChoiceChip) ─────────────────
+
+class _SelectionItem extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _SelectionItem({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        height: AppSpacing.selectionItemHeight,
+        padding: const EdgeInsets.symmetric(horizontal: 24),
+        decoration: BoxDecoration(
+          color: selected ? AppColors.surfaceLightBlue : Colors.transparent,
+          borderRadius: BorderRadius.circular(AppRadius.card),
+          border: selected
+              ? null
+              : Border.all(color: AppColors.border, width: 0.5),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                label,
+                style: const TextStyle(
+                  fontSize: 14,
+                  color: AppColors.textPrimary,
+                ),
+              ),
+            ),
+            if (selected)
+              const Icon(Icons.check, size: 18, color: AppColors.primary),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── Dashed border painter ─────────────────────────────────────────────
+
+class _DashedBorderPainter extends CustomPainter {
+  final Color color;
+  final double strokeWidth;
+  final double radius;
+  final double dashLength;
+  final double gapLength;
+
+  _DashedBorderPainter({
+    required this.color,
+    required this.strokeWidth,
+    required this.radius,
+    required this.dashLength,
+    required this.gapLength,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..strokeWidth = strokeWidth
+      ..style = PaintingStyle.stroke;
+
+    final path = Path()
+      ..addRRect(
+        RRect.fromRectAndRadius(
+          Rect.fromLTWH(0, 0, size.width, size.height),
+          Radius.circular(radius),
+        ),
+      );
+
+    final dashPath = _createDashedPath(path);
+    canvas.drawPath(dashPath, paint);
+  }
+
+  Path _createDashedPath(Path source) {
+    final result = Path();
+    for (final metric in source.computeMetrics()) {
+      double distance = 0;
+      while (distance < metric.length) {
+        final end = (distance + dashLength).clamp(0, metric.length);
+        result.addPath(metric.extractPath(distance, end.toDouble()), Offset.zero);
+        distance += dashLength + gapLength;
+      }
+    }
+    return result;
+  }
+
+  @override
+  bool shouldRepaint(_DashedBorderPainter oldDelegate) =>
+      color != oldDelegate.color || strokeWidth != oldDelegate.strokeWidth;
+}
+
+// ── Domain chip (smaller, inline selection) ───────────────────────────
+
+class _DomainChip extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _DomainChip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        decoration: BoxDecoration(
+          color: selected ? AppColors.surfaceLightBlue : Colors.transparent,
+          borderRadius: BorderRadius.circular(20),
+          border: selected
+              ? null
+              : Border.all(color: AppColors.border, width: 0.5),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 13,
+            color: selected ? AppColors.primary : AppColors.textPrimary,
+            fontWeight: selected ? FontWeight.w500 : FontWeight.w400,
+          ),
+        ),
+      ),
     );
   }
 }

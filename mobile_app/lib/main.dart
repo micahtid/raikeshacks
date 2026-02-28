@@ -1,10 +1,12 @@
 import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform, TargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 
 import 'screens/dashboard_screen.dart';
 import 'screens/onboarding_screen.dart';
+import 'theme.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -19,9 +21,7 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'knkt',
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
-      ),
+      theme: buildAppTheme(),
       home: const AuthGate(),
     );
   }
@@ -97,35 +97,50 @@ class _AuthGateState extends State<AuthGate> {
     }
 
     if (_currentUser == null) {
+      final theme = Theme.of(context);
       return Scaffold(
-        body: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                Icons.lock_outline,
-                size: 80,
-                color: Theme.of(context).colorScheme.primary,
-              ),
-              const SizedBox(height: 24),
-              Text(
-                'Welcome to knkt',
-                style: Theme.of(context).textTheme.headlineSmall,
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Sign in to continue',
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
-              ),
-              const SizedBox(height: 40),
-              FilledButton.icon(
-                onPressed: _handleSignIn,
-                icon: const Icon(Icons.login),
-                label: const Text('Sign in with Google'),
-              ),
-            ],
+        body: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.screenPadding),
+            child: Column(
+              children: [
+                const Spacer(flex: 3),
+                Container(
+                  width: 80,
+                  height: 80,
+                  decoration: BoxDecoration(
+                    color: AppColors.surfaceLightBlue,
+                    borderRadius: BorderRadius.circular(24),
+                  ),
+                  child: const Icon(
+                    Icons.people_alt_rounded,
+                    size: 40,
+                    color: AppColors.primary,
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.sectionGapSmall),
+                Text(
+                  'knkt',
+                  style: GoogleFonts.sora(
+                    fontSize: 32,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Find your people. Build together.',
+                  style: theme.textTheme.bodyMedium,
+                ),
+                const Spacer(flex: 4),
+                FilledButton.icon(
+                  onPressed: _handleSignIn,
+                  icon: const Icon(Icons.login, size: 20),
+                  label: const Text('Sign in with Google'),
+                ),
+                const SizedBox(height: AppSpacing.screenPadding),
+              ],
+            ),
           ),
         ),
       );
