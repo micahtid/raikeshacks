@@ -1,21 +1,33 @@
 import math
+import logging
+import re
 from datetime import datetime, timezone
 from dataclasses import dataclass, field
 from typing import Optional
 
-from sentence_transformers import SentenceTransformer
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# ── Robust Model Loading ────────────────────────────────────────────────
+try:
+    from sentence_transformers import SentenceTransformer
+    # 'all-MiniLM-L6-v2' is the target, but we wrap it to handle Python 3.14 issues
+    model = SentenceTransformer('all-MiniLM-L6-v2')
+    HAS_TRANSFORMERS = True
+    logger.info("✅ SentenceTransformer loaded successfully.")
+except Exception as e:
+    logger.warning(f"⚠️ Similarity Engine Fallback: {e}")
+    model = None
+    HAS_TRANSFORMERS = False
 
 from db import get_db
 from models.student import FocusArea, SkillPriority, StudentProfile
 
-# Initialize the embedding model (this will download on first run)
-# 'all-MiniLM-L6-v2' is small, fast, and effective for hackathons.
-model = SentenceTransformer('all-MiniLM-L6-v2')
-
 # ── Helpers ──────────────────────────────────────────────────────────────
 
 def _cosine_sim(a: list[float], b: list[float]) -> float:
-    if not a or not b:
+    if not a or not b or len(a) != len(b):
         return 0.0
     dot = sum(x * y for x, y in zip(a, b))
     mag_a = math.sqrt(sum(x * x for x in a))
@@ -24,30 +36,44 @@ def _cosine_sim(a: list[float], b: list[float]) -> float:
         return 0.0
     return dot / (mag_a * mag_b)
 
+def _jaccard_sim(set_a: set, set_b: set) -> float:
+    if not set_a or not set_b:
+        return 0.0
+    return len(set_a & set_b) / len(set_a | set_b)
+
+def _simple_text_to_vec(text: str) -> set[str]:
+    """Fallback: Basic tokenization for keyword matching."""
+    return set(re.findall(r'\w+', text.lower()))
+
 # ── Embedding Logic ─────────────────────────────────────────────────────
 
 def generate_profile_embeddings(profile: StudentProfile) -> dict:
-    """Generate semantic embeddings for a student's skills and projects."""
-    # What they have: possessed skills + project description
+    """Generate semantic embeddings (or keywords if fallback) for a student."""
     possessed_items = [s.name for s in profile.skills.possessed]
     if profile.project and profile.project.one_liner:
         possessed_items.append(profile.project.one_liner)
     if profile.project and profile.project.industry:
         possessed_items.extend(profile.project.industry)
-    
     possessed_text = ". ".join(possessed_items)
     
-    # What they need: needed skills
     needed_items = [s.name for s in profile.skills.needed]
     needed_text = ". ".join(needed_items)
     
-    # Handle empty strings to avoid model errors
-    p_embedding = model.encode(possessed_text or "none").tolist()
-    n_embedding = model.encode(needed_text or "none").tolist()
+    # If we have the model, use it. Otherwise, store as keywords for fallback.
+    if HAS_TRANSFORMERS and model:
+        p_res = model.encode(possessed_text or "none")
+        p_vec = p_res.tolist() if hasattr(p_res, 'tolist') else list(p_res)
+        
+        n_res = model.encode(needed_text or "none")
+        n_vec = n_res.tolist() if hasattr(n_res, 'tolist') else list(n_res)
+    else:
+        # Fallback: Store keywords so we can still match if torch is broken
+        p_vec = list(_simple_text_to_vec(possessed_text))
+        n_vec = list(_simple_text_to_vec(needed_text))
     
     return {
-        "possessed_vector": p_embedding,
-        "needed_vector": n_embedding,
+        "possessed_vector": p_vec,
+        "needed_vector": n_vec,
         "last_indexed_at": datetime.now(timezone.utc).isoformat()
     }
 
@@ -57,36 +83,23 @@ FOCUS_AREA_ORDER = [e.value for e in FocusArea]
 
 @dataclass
 class ProfileVectors:
-    possessed_vec: list[float] = field(default_factory=list)
-    needed_vec: list[float] = field(default_factory=list)
+    possessed_vec: list = field(default_factory=list)
+    needed_vec: list = field(default_factory=list)
     focus_vec: list[float] = field(default_factory=list)
-    industry_vec: list[float] = field(default_factory=list)
-    # Keep raw sets for concrete skill matching highlights
     possessed_names: set[str] = field(default_factory=set)
     needed_names: set[str] = field(default_factory=set)
 
 def vectorize_profile(profile: StudentProfile) -> ProfileVectors:
-    """Convert a student profile into vectors for comparison.
-    Uses pre-computed embeddings for skills and manual vectors for categorical data.
-    """
     pv = ProfileVectors()
-
-    # Get embeddings from the 'rag' field if they exist
     if profile.rag:
-        pv.possessed_vec = profile.rag.get("possessed_vector", [])
-        pv.needed_vec = profile.rag.get("needed_vector", [])
+        pv.possessed_vec = profile.rag.possessed_vector or []
+        pv.needed_vec = profile.rag.needed_vector or []
 
-    # Focus areas — binary over the 5-value enum
     focus_set = {fa.value for fa in profile.focus_areas}
     pv.focus_vec = [1.0 if fa in focus_set else 0.0 for fa in FOCUS_AREA_ORDER]
-
-    # Industries — binary vector for industry overlap
-    # We'll use a simple set-based approach for industry_overlap in compute_match 
-    # instead of a fixed vocab vector to keep it dynamic and simple.
     
     pv.possessed_names = {s.name.strip().lower() for s in profile.skills.possessed}
     pv.needed_names = {s.name.strip().lower() for s in profile.skills.needed}
-
     return pv
 
 # ── Scoring ──────────────────────────────────────────────────────────────
@@ -111,40 +124,43 @@ class Weights:
 def compute_match(
     query_profile: StudentProfile,
     query_vecs: ProfileVectors,
-    candidate_profile: StudentProfile,
-    candidate_vecs: ProfileVectors,
+    cand_profile: StudentProfile,
+    cand_vecs: ProfileVectors,
     weights: Weights,
 ) -> MatchScore:
-    # 1. Complementarity (Skill Matching) via Embeddings
-    # How well their skills (possessed) match what you need
-    help_they_give_you = _cosine_sim(query_vecs.needed_vec, candidate_vecs.possessed_vec)
-    # How well your skills match what they need
-    help_you_give_them = _cosine_sim(candidate_vecs.needed_vec, query_vecs.possessed_vec)
+    # 1. Complementarity
+    if HAS_TRANSFORMERS and isinstance(query_vecs.possessed_vec[0], float):
+        # Semantic Match
+        help_they_give_you = _cosine_sim(query_vecs.needed_vec, cand_vecs.possessed_vec)
+        help_you_give_them = _cosine_sim(cand_vecs.needed_vec, query_vecs.possessed_vec)
+    else:
+        # Fallback Keyword Match (Jaccard)
+        q_need = set(query_vecs.needed_vec)
+        c_have = set(cand_vecs.possessed_vec)
+        help_they_give_you = _jaccard_sim(q_need, c_have)
+        
+        c_need = set(cand_vecs.needed_vec)
+        q_have = set(query_vecs.possessed_vec)
+        help_you_give_them = _jaccard_sim(c_need, q_have)
     
     complementarity = 0.5 * help_they_give_you + 0.5 * help_you_give_them
 
-    # 2. Focus Overlap (Categorical)
-    focus_overlap = _cosine_sim(query_vecs.focus_vec, candidate_vecs.focus_vec)
+    # 2. Focus Overlap
+    focus_overlap = _cosine_sim(query_vecs.focus_vec, cand_vecs.focus_vec)
 
-    # 3. Industry Overlap (Keyword-based for accuracy)
+    # 3. Industry Overlap
     q_inds = set(query_profile.project.industry) if query_profile.project else set()
-    c_inds = set(candidate_profile.project.industry) if candidate_profile.project else set()
-    industry_overlap = 0.0
-    if q_inds and c_inds:
-        intersection = q_inds & c_inds
-        union = q_inds | c_inds
-        industry_overlap = len(intersection) / len(union)
+    c_inds = set(cand_profile.project.industry) if cand_profile.project else set()
+    industry_overlap = _jaccard_sim(q_inds, c_inds)
 
-    # Weighted Final Score
     score = (
         weights.complementarity * complementarity
         + weights.focus * focus_overlap
         + weights.industry * industry_overlap
     )
 
-    # Concrete highlights for the UI
-    matched_skills = sorted(query_vecs.needed_names & candidate_vecs.possessed_names)
-    skills_you_offer = sorted(candidate_vecs.needed_names & query_vecs.possessed_names)
+    matched_skills = sorted(query_vecs.needed_names & cand_vecs.possessed_names)
+    skills_you_offer = sorted(cand_vecs.needed_names & query_vecs.possessed_names)
 
     return MatchScore(
         score=score,
@@ -157,7 +173,7 @@ def compute_match(
         skills_you_offer=skills_you_offer,
     )
 
-# ── Main entry point ────────────────────────────────────────────────────
+# ── Main Entry ──────────────────────────────────────────────────────────
 
 async def find_matches(
     query_uid: str,
@@ -165,37 +181,24 @@ async def find_matches(
     threshold: float,
     weights: Weights,
 ) -> tuple[Optional[StudentProfile], int, list[tuple[StudentProfile, MatchScore]]]:
-    """Return (query_profile, total_candidates, ranked_matches)."""
     db = get_db()
-    
-    # Fetch all students (simple for hackathon, at scale use Vector Search)
     cursor = db.student_profiles.find({}, {"_id": 0})
     docs = await cursor.to_list(length=None)
     profiles = [StudentProfile(**doc) for doc in docs]
 
-    # Find the query student
-    query_profile: Optional[StudentProfile] = None
-    candidates: list[StudentProfile] = []
-    for p in profiles:
-        if p.uid == query_uid:
-            query_profile = p
-        else:
-            candidates.append(p)
-
-    if query_profile is None:
+    query_profile = next((p for p in profiles if p.uid == query_uid), None)
+    if not query_profile:
         return None, 0, []
-
+        
+    candidates = [p for p in profiles if p.uid != query_uid]
     query_vecs = vectorize_profile(query_profile)
 
-    # Score every candidate
-    results: list[tuple[StudentProfile, MatchScore]] = []
+    results = []
     for cand in candidates:
         cand_vecs = vectorize_profile(cand)
         ms = compute_match(query_profile, query_vecs, cand, cand_vecs, weights)
         if ms.score >= threshold:
             results.append((cand, ms))
 
-    # Sort descending by score
-    results.sort(key=lambda pair: pair[1].score, reverse=True)
-
+    results.sort(key=lambda x: x[1].score, reverse=True)
     return query_profile, len(candidates), results[:limit]
