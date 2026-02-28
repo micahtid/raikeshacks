@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Optional
+from typing import Optional, Any
 from uuid import uuid4
 
 from pydantic import BaseModel, EmailStr
@@ -69,6 +69,14 @@ class Skills(BaseModel):
     needed: list[NeededSkill] = []
 
 
+class Rag(BaseModel):
+    """Reference to this student's vector embeddings."""
+    # Using Any to allow both list[float] (semantic) and list[str] (keyword fallback)
+    possessed_vector: list[Any] = []
+    needed_vector: list[Any] = []
+    last_indexed_at: Optional[datetime] = None
+
+
 # ── Request / response schemas ──────────────────────────────────────────
 
 class StudentCreate(BaseModel):
@@ -95,7 +103,7 @@ class StudentProfile(BaseModel):
     identity: Identity
     focus_areas: list[FocusArea]
     project: Optional[Project] = None
-    rag: Optional[dict] = None
+    rag: Optional[Rag] = None
     skills: Skills
 
 
@@ -111,17 +119,16 @@ async def create_student(data: StudentCreate) -> StudentProfile:
     # Create the base doc
     doc = {
         "uid": str(uuid4()),
-        "created_at": now.isoformat(),
+        "created_at": now,
         **data.model_dump(),
     }
     
     # Generate embeddings based on the initial data
-    # Create a temp StudentProfile for the generator
     temp_profile = StudentProfile(**doc)
     doc["rag"] = generate_profile_embeddings(temp_profile)
     
     await db.student_profiles.insert_one(doc)
-    doc.pop("_id", None)  # Mongo adds _id; strip it from the response
+    doc.pop("_id", None)
     return StudentProfile(**doc)
 
 
@@ -135,14 +142,11 @@ async def get_student(uid: str) -> Optional[StudentProfile]:
 
 
 async def update_student(uid: str, data: StudentUpdate) -> Optional[StudentProfile]:
-    """Update fields on an existing student and re-generate embeddings.
-    Returns the updated document or None.
-    """
+    """Update fields on an existing student and re-generate embeddings."""
     from services.similarity import generate_profile_embeddings
     
     db = get_db()
     
-    # Fetch current doc to handle partial updates and embedding re-generation
     current_doc = await db.student_profiles.find_one({"uid": uid}, {"_id": 0})
     if current_doc is None:
         return None
@@ -151,16 +155,14 @@ async def update_student(uid: str, data: StudentUpdate) -> Optional[StudentProfi
     if not changes:
         return StudentProfile(**current_doc)
     
-    # Update current doc with changes locally to compute new embeddings
     current_doc.update(changes)
-    current_doc["updated_at"] = datetime.now(timezone.utc).isoformat()
+    current_doc["updated_at"] = datetime.now(timezone.utc)
     
     # Re-generate embeddings if relevant fields changed
     if "skills" in changes or "project" in changes:
         temp_profile = StudentProfile(**current_doc)
         current_doc["rag"] = generate_profile_embeddings(temp_profile)
     
-    # Save the updated doc
     result = await db.student_profiles.find_one_and_update(
         {"uid": uid},
         {"$set": current_doc},
