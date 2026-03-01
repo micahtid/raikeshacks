@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/connection_model.dart';
 import '../services/backend_service.dart';
 import '../services/connection_service.dart';
+import '../services/background_service.dart';
 import '../services/nearby_service.dart';
 import '../theme.dart';
 import 'chat_screen.dart';
@@ -66,10 +67,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final granted = await _svc.requestPermissions();
     if (!granted) return;
     await _svc.startBoth();
+    await BackgroundServiceManager.start();
     if (mounted) setState(() => _isScanning = true);
   }
 
   Future<void> _stopScanning() async {
+    await BackgroundServiceManager.stop();
     await _svc.stopAll();
     if (mounted) setState(() => _isScanning = false);
   }

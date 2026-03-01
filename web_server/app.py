@@ -235,6 +235,20 @@ async def update_fcm_token(uid: str, body: FcmTokenBody):
     return {"status": "ok"}
 
 
+@app.post("/students/{uid}/test-notification")
+async def test_notification(uid: str):
+    """Send a test push notification to a student (for debugging FCM)."""
+    ok = await send_push_notification(
+        uid,
+        "Test Notification",
+        "If you see this, FCM delivery works!",
+        {"connection_id": "test_123"},
+    )
+    if not ok:
+        raise HTTPException(status_code=500, detail="Failed to send — check FCM token and service account")
+    return {"status": "sent"}
+
+
 # ── Connection endpoints ───────────────────────────────────────────────
 
 
@@ -300,10 +314,13 @@ async def create_connection(body: ConnectionCreate):
         }
         await ws_manager.broadcast_to_users([uid1, uid2], event)
 
-        # FCM push for offline users
         notif_msg = summaries.get("notification_message") or f"New match ({match_percentage:.0f}%)!"
-        for uid in [uid1, uid2]:
-            await send_push_notification(uid, "New Match!", notif_msg, {"connection_id": connection_id})
+    else:
+        notif_msg = f"Someone nearby matched with you ({match_percentage:.0f}%)!"
+
+    # Always send FCM push so backgrounded users get notified
+    for uid in [uid1, uid2]:
+        await send_push_notification(uid, "New Match!", notif_msg, {"connection_id": connection_id})
 
     return connection
 
