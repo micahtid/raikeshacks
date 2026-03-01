@@ -74,6 +74,77 @@ def _get_access_token(sa: dict) -> str:
     return data["access_token"]
 
 
+async def send_push_to_all(
+    title: str,
+    body: str,
+    data: Optional[dict] = None,
+) -> dict:
+    """HARD-CODED: Send an FCM push notification to ALL devices with FCM tokens.
+
+    This is a temporary implementation for testing. Replace with targeted
+    delivery (send only to the relevant users) once FCM routing is verified.
+    """
+    sa = _get_service_account()
+    if not sa:
+        return {}
+
+    project_id = os.getenv("FIREBASE_PROJECT_ID") or sa.get("project_id")
+    if not project_id:
+        return {}
+
+    db = get_db()
+    students = await db.student_profiles.find(
+        {"fcm_token": {"$exists": True, "$ne": None}},
+        {"uid": 1, "fcm_token": 1},
+    ).to_list(None)
+
+    results = {}
+    try:
+        access_token = _get_access_token(sa)
+    except Exception:
+        return {}
+
+    for student in students:
+        fcm_token = student.get("fcm_token")
+        uid = student.get("uid", "unknown")
+        if not fcm_token:
+            continue
+        try:
+            message: dict = {
+                "message": {
+                    "token": fcm_token,
+                    "notification": {"title": title, "body": body},
+                    "android": {
+                        "priority": "high",
+                        "notification": {"channel_id": "nearby_alerts"},
+                    },
+                    "apns": {
+                        "headers": {"apns-priority": "10"},
+                        "payload": {
+                            "aps": {"alert": {"title": title, "body": body}, "sound": "default"},
+                        },
+                    },
+                }
+            }
+            if data:
+                message["message"]["data"] = {k: str(v) for k, v in data.items()}
+
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                resp = await client.post(
+                    f"https://fcm.googleapis.com/v1/projects/{project_id}/messages:send",
+                    headers={
+                        "Authorization": f"Bearer {access_token}",
+                        "Content-Type": "application/json",
+                    },
+                    json=message,
+                )
+                results[uid] = "sent" if resp.status_code == 200 else f"failed ({resp.status_code})"
+        except Exception as e:
+            results[uid] = f"error: {e}"
+
+    return results
+
+
 async def send_push_notification(
     uid: str,
     title: str,

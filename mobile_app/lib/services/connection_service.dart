@@ -112,8 +112,13 @@ class ConnectionService extends ChangeNotifier {
         connections[conn.connectionId] = conn;
         // Fetch peer profiles we don't have yet
         final peerUid = conn.otherUid(myUid!);
+        if (conn.isComplete) {
+          // Force re-fetch so un-anonymize picks up fresh data
+          peerProfiles.remove(peerUid);
+        }
         await _ensurePeerProfile(peerUid);
       }
+      notifyListeners();
     }
   }
 

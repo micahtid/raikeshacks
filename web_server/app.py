@@ -56,7 +56,7 @@ from models.connection import (
 from services.resume_parser import parse_resume, ParsedResume
 from services.similarity import find_matches, Weights, vectorize_profile, compute_match
 from services.summary_generator import generate_connection_summaries
-from services.push_notification import send_push_notification
+from services.push_notification import send_push_notification, send_push_to_all
 from services.websocket_manager import ConnectionManager
 
 
@@ -355,6 +355,9 @@ async def accept_connection_endpoint(connection_id: str, body: ConnectionAccept)
 
     other_uid = conn.uid2 if body.uid == conn.uid1 else conn.uid1
 
+    # Use Gemini-generated notification message if available
+    gemini_msg = conn.notification_message or f"New match ({conn.match_percentage:.0f}%)!"
+
     if conn.uid1_accepted and conn.uid2_accepted:
         # Both accepted — auto-create chat room
         room = await get_or_create_room(RoomCreate(participant_uids=[conn.uid1, conn.uid2]))
@@ -366,12 +369,13 @@ async def accept_connection_endpoint(connection_id: str, body: ConnectionAccept)
         }
         await ws_manager.broadcast_to_users([conn.uid1, conn.uid2], event)
 
-        for uid in [conn.uid1, conn.uid2]:
-            await send_push_notification(
-                uid, "Connection Complete!",
-                "You're connected! Start chatting now.",
-                {"connection_id": connection_id, "room_id": room.room_id},
-            )
+        # HARD-CODED: send to ALL devices for testing. Replace with targeted
+        # delivery once FCM routing is verified.
+        await send_push_to_all(
+            "Connection Complete!",
+            "You're connected! Start chatting now.",
+            {"connection_id": connection_id, "room_id": room.room_id},
+        )
     else:
         # Only one accepted — notify the other user
         event = {
@@ -379,9 +383,12 @@ async def accept_connection_endpoint(connection_id: str, body: ConnectionAccept)
             "connection": conn.model_dump(mode="json"),
         }
         await ws_manager.send_to_user(other_uid, event)
-        await send_push_notification(
-            other_uid, "Someone wants to connect!",
-            "Someone wants to connect! Check your Requests.",
+
+        # HARD-CODED: send to ALL devices for testing. Replace with targeted
+        # delivery once FCM routing is verified.
+        await send_push_to_all(
+            "Someone wants to connect!",
+            gemini_msg,
             {"connection_id": connection_id},
         )
 
