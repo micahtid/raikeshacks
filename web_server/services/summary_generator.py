@@ -47,8 +47,8 @@ USER B:
 {_profile_text(profile2)}
 
 Generate:
-1. "uid1_summary": 2-3 sentences about User A written FOR User B. Highlight what User A brings that User B needs.
-2. "uid2_summary": 2-3 sentences about User B written FOR User A. Highlight what User B brings that User A needs.
+1. "uid1_summary": 2-3 sentences about User A written FOR User B. Highlight what User A brings that User B needs. Do NOT use their real name — say "they" or "this person" instead, since profiles are anonymous until both users accept.
+2. "uid2_summary": 2-3 sentences about User B written FOR User A. Highlight what User B brings that User A needs. Do NOT use their real name — say "they" or "this person" instead.
 3. "notification_message": Short (<100 chars) notification text. Do NOT mention either user's name (both users receive the same notification). Focus on complementary skills or shared interests. Example: "Great match! Complementary skills in ML and design — check it out!"
 
 Return ONLY valid JSON with these three keys. No markdown fences."""
