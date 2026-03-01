@@ -206,17 +206,12 @@ class _AuthGateState extends State<AuthGate> {
             child: Column(
               children: [
                 const Spacer(flex: 3),
-                Container(
-                  width: 80,
-                  height: 80,
-                  decoration: BoxDecoration(
-                    color: AppColors.surfaceLightBlue,
-                    borderRadius: BorderRadius.circular(24),
-                  ),
-                  child: const Icon(
-                    Icons.people_alt_rounded,
-                    size: 40,
-                    color: AppColors.primary,
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(24),
+                  child: Image.asset(
+                    'assets/icon/app_icon.png',
+                    width: 96,
+                    height: 96,
                   ),
                 ),
                 const SizedBox(height: AppSpacing.sectionGapSmall),
@@ -228,10 +223,14 @@ class _AuthGateState extends State<AuthGate> {
                     color: AppColors.textPrimary,
                   ),
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 10),
                 Text(
                   'Find your people. Build together.',
-                  style: theme.textTheme.bodyMedium,
+                  style: GoogleFonts.sora(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w400,
+                    color: AppColors.textSecondary,
+                  ),
                 ),
                 const Spacer(flex: 4),
                 FilledButton.icon(
