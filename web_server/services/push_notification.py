@@ -1,10 +1,11 @@
+import base64
+import hashlib
 import json
 import os
 import time
 from typing import Optional
 
 import httpx
-import jwt
 
 from db import get_db
 
@@ -20,29 +21,50 @@ def _get_service_account() -> Optional[dict]:
     return json.loads(raw)
 
 
+def _b64url(data: bytes) -> str:
+    """Base64url encode without padding."""
+    return base64.urlsafe_b64encode(data).rstrip(b"=").decode("ascii")
+
+
+def _sign_rs256(payload_bytes: bytes, private_key_pem: str) -> str:
+    """Sign a JWT using RS256 with Python's stdlib + cryptography (ships with httpx)."""
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import padding
+
+    key = serialization.load_pem_private_key(private_key_pem.encode(), password=None)
+    signature = key.sign(payload_bytes, padding.PKCS1v15(), hashes.SHA256())
+    return _b64url(signature)
+
+
+def _make_jwt(sa: dict) -> str:
+    """Create a signed JWT for Google OAuth2 token exchange."""
+    now = int(time.time())
+    header = _b64url(json.dumps({"alg": "RS256", "typ": "JWT"}).encode())
+    claims = _b64url(json.dumps({
+        "iss": sa["client_email"],
+        "sub": sa["client_email"],
+        "aud": "https://oauth2.googleapis.com/token",
+        "iat": now,
+        "exp": now + 3600,
+        "scope": "https://www.googleapis.com/auth/firebase.messaging",
+    }).encode())
+    signing_input = f"{header}.{claims}"
+    signature = _sign_rs256(signing_input.encode(), sa["private_key"])
+    return f"{signing_input}.{signature}"
+
+
 def _get_access_token(sa: dict) -> str:
     """Sign a JWT and exchange it for an OAuth2 access token (cached)."""
     now = time.time()
     if _token_cache["token"] and _token_cache["expires_at"] > now + 60:
         return _token_cache["token"]
 
-    iat = int(now)
-    exp = iat + 3600
-    payload = {
-        "iss": sa["client_email"],
-        "sub": sa["client_email"],
-        "aud": "https://oauth2.googleapis.com/token",
-        "iat": iat,
-        "exp": exp,
-        "scope": "https://www.googleapis.com/auth/firebase.messaging",
-    }
-    signed = jwt.encode(payload, sa["private_key"], algorithm="RS256")
-
+    signed_jwt = _make_jwt(sa)
     resp = httpx.post(
         "https://oauth2.googleapis.com/token",
         data={
             "grant_type": "urn:ietf:params:oauth:grant-type:jwt-bearer",
-            "assertion": signed,
+            "assertion": signed_jwt,
         },
     )
     resp.raise_for_status()
