@@ -37,6 +37,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   int _selectedTab = 0;
   bool _isScanning = false;
   bool _isDeleting = false;
+  bool _isClearingData = false;
 
   NearbyService get _svc => widget.nearbyService;
   ConnectionService get _connSvc => widget.connectionService;
@@ -71,6 +72,77 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Future<void> _stopScanning() async {
     await _svc.stopAll();
     if (mounted) setState(() => _isScanning = false);
+  }
+
+  Future<void> _clearData() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Fresh Start'),
+        content: const Text(
+          'This will remove all your connections and chat history. Your profile will be kept.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(
+              'Cancel',
+              style: TextStyle(color: AppColors.textSecondary),
+            ),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(
+              'Clear',
+              style: TextStyle(color: AppColors.primary),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    setState(() => _isClearingData = true);
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final uid = prefs.getString('student_uid');
+
+      if (uid == null || uid.isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('No account found')),
+          );
+          setState(() => _isClearingData = false);
+        }
+        return;
+      }
+
+      final success = await BackendService.clearUserData(uid);
+      if (success) {
+        widget.connectionService.clearLocalData();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('All connections and chats cleared')),
+          );
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Failed to clear data')),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isClearingData = false);
+    }
   }
 
   Future<void> _deleteAccount() async {
@@ -577,6 +649,29 @@ class _DashboardScreenState extends State<DashboardScreen> {
               foregroundColor: AppColors.textPrimary,
             ),
             child: const Text('Sign Out'),
+          ),
+        ),
+        const SizedBox(height: 12),
+        // Fresh Start button
+        Padding(
+          padding:
+              const EdgeInsets.symmetric(horizontal: AppSpacing.screenPadding),
+          child: FilledButton(
+            onPressed: _isClearingData ? null : _clearData,
+            style: FilledButton.styleFrom(
+              backgroundColor: AppColors.surfaceLightBlue,
+              foregroundColor: AppColors.textPrimary,
+            ),
+            child: _isClearingData
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: AppColors.textPrimary,
+                    ),
+                  )
+                : const Text('Fresh Start'),
           ),
         ),
         const SizedBox(height: 12),
