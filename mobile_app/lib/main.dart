@@ -15,6 +15,7 @@ import 'services/connection_service.dart';
 import 'services/fcm_service.dart';
 import 'services/nearby_service.dart';
 import 'services/notification_service.dart';
+import 'services/background_service.dart';
 import 'services/websocket_service.dart';
 import 'theme.dart';
 
@@ -30,6 +31,7 @@ void main() async {
   await dotenv.load(fileName: ".env");
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+  await BackgroundServiceManager.configure();
   runApp(const MyApp());
 }
 
@@ -148,7 +150,7 @@ class _AuthGateState extends State<AuthGate> {
       _webSocketService.onConnectionComplete = (_) => _connectionService.refreshConnections();
       _webSocketService.connect(_connectionService.myUid!, baseUrl);
 
-      // Initialize FCM (stub until Firebase project is set up)
+      // Initialize FCM
       await _fcmService.initialize(_connectionService.myUid!, _notificationService);
     }
   }
@@ -174,6 +176,7 @@ class _AuthGateState extends State<AuthGate> {
   }
 
   Future<void> _handleSignOut() async {
+    await BackgroundServiceManager.stop();
     _webSocketService.disconnect();
     await _nearbyService.stopAll();
     await _googleSignIn.signOut();

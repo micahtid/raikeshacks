@@ -10,6 +10,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/peer_device.dart';
+import 'background_service.dart';
 import 'notification_service.dart';
 
 /// UI-side service that drives Nearby Connections **in the main isolate**.
@@ -81,8 +82,9 @@ class NearbyService extends ChangeNotifier {
     }
 
     final statuses = await perms.request();
-    final allGranted =
-        statuses.values.every((s) => s == PermissionStatus.granted);
+    final allGranted = statuses.values.every(
+      (s) => s == PermissionStatus.granted,
+    );
 
     if (!allGranted) {
       _setStatus('Some permissions were denied. P2P may not work.');
@@ -107,6 +109,8 @@ class NearbyService extends ChangeNotifier {
     if (isAdvertising || isDiscovering) {
       await _stopNearby();
     }
+
+    await BackgroundServiceManager.start();
 
     // ── Advertise ──
     try {
@@ -148,6 +152,7 @@ class NearbyService extends ChangeNotifier {
 
   /// Stop all Nearby activity.
   Future<void> stopAll() async {
+    await BackgroundServiceManager.stop();
     await _stopNearby();
     connectedEndpointId = null;
     connectedPeerName = null;
@@ -167,7 +172,10 @@ class NearbyService extends ChangeNotifier {
 
   void _onEndpointFound(String endpointId, String name, String serviceId) {
     debugPrint('[knkt] onEndpointFound: $endpointId ($name)');
-    discoveredPeers[endpointId] = PeerDevice(endpointId: endpointId, name: name);
+    discoveredPeers[endpointId] = PeerDevice(
+      endpointId: endpointId,
+      name: name,
+    );
     if (name != displayName) {
       _notificationService?.showNearbyNotification(name);
     }
@@ -193,7 +201,9 @@ class NearbyService extends ChangeNotifier {
   }
 
   void _onConnectionInitiated(String endpointId, ConnectionInfo info) {
-    debugPrint('[knkt] onConnectionInitiated: $endpointId (${info.endpointName})');
+    debugPrint(
+      '[knkt] onConnectionInitiated: $endpointId (${info.endpointName})',
+    );
     _pendingNames[endpointId] = info.endpointName;
     _nearby.acceptConnection(
       endpointId,
@@ -276,9 +286,15 @@ class NearbyService extends ChangeNotifier {
   // ── Helpers ───────────────────────────────────────────────────────────────
 
   Future<void> _stopNearby() async {
-    try { await _nearby.stopAdvertising(); } catch (_) {}
-    try { await _nearby.stopDiscovery(); } catch (_) {}
-    try { await _nearby.stopAllEndpoints(); } catch (_) {}
+    try {
+      await _nearby.stopAdvertising();
+    } catch (_) {}
+    try {
+      await _nearby.stopDiscovery();
+    } catch (_) {}
+    try {
+      await _nearby.stopAllEndpoints();
+    } catch (_) {}
     isAdvertising = false;
     isDiscovering = false;
   }
