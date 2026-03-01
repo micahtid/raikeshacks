@@ -105,12 +105,9 @@ class NearbyService extends ChangeNotifier {
       myUid = prefs.getString('student_uid');
     }
 
-    // Stop any previous session first.
-    if (isAdvertising || isDiscovering) {
-      await _stopNearby();
-    }
-
-    await BackgroundServiceManager.start();
+    // Always stop any previous native session — the native side may still be
+    // active even if our flags say otherwise (e.g. after hot-reload / crash).
+    await _stopNearby();
 
     // ── Advertise ──
     try {
@@ -125,9 +122,8 @@ class NearbyService extends ChangeNotifier {
       isAdvertising = advOk;
       debugPrint('[knkt] startAdvertising → $advOk');
     } catch (e) {
-      _setStatus('Failed to advertise: $e');
       debugPrint('[knkt] startAdvertising FAILED: $e');
-      return;
+      // Don't return — still try discovery even if advertising fails.
     }
 
     // ── Discover ──
@@ -142,12 +138,14 @@ class NearbyService extends ChangeNotifier {
       isDiscovering = disOk;
       debugPrint('[knkt] startDiscovery → $disOk');
     } catch (e) {
-      _setStatus('Failed to discover: $e');
       debugPrint('[knkt] startDiscovery FAILED: $e');
-      return;
     }
 
-    _setStatus('Live — advertising & discovering as "$displayName"…');
+    if (isAdvertising || isDiscovering) {
+      _setStatus('Live — advertising & discovering as "$displayName"…');
+    } else {
+      _setStatus('Nearby Connections unavailable — using BLE discovery');
+    }
   }
 
   /// Stop all Nearby activity.

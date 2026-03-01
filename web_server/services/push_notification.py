@@ -133,6 +133,9 @@ async def send_push_notification(
                 },
                 json=message,
             )
-            return resp.status_code == 200
+            if resp.status_code != 200:
+                print(f'[knkt-fcm] delivery failed {resp.status_code}: {resp.text[:200]}')
+                return False
+            return True
     except Exception:
         return False

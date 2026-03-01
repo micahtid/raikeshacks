@@ -82,7 +82,13 @@
 		<key>UIBackgroundModes</key>
 		<array>
 			<string>remote-notification</string>
+			<string>bluetooth-central</string>
+			<string>bluetooth-peripheral</string>
 		</array>
+		<key>NSBluetoothAlwaysUsageDescription</key>
+		<string>knkt uses Bluetooth to discover people nearby</string>
+		<key>NSBluetoothPeripheralUsageDescription</key>
+		<string>knkt uses Bluetooth to let others discover you nearby</string>
 		<key>UIStatusBarHidden</key>
 		<false/>
 	</dict>

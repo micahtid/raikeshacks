@@ -1,6 +1,7 @@
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
-import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform, TargetPlatform;
+import 'package:flutter/foundation.dart'
+    show kIsWeb, defaultTargetPlatform, TargetPlatform;
 import 'firebase_options.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
@@ -16,6 +17,7 @@ import 'services/fcm_service.dart';
 import 'services/nearby_service.dart';
 import 'services/notification_service.dart';
 import 'services/background_service.dart';
+import 'services/ble_discovery_service.dart';
 import 'services/websocket_service.dart';
 import 'theme.dart';
 
@@ -31,6 +33,12 @@ void main() async {
   await dotenv.load(fileName: ".env");
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+  // Store backend URL for the background service isolate (which can't use dotenv).
+  final prefs = await SharedPreferences.getInstance();
+  await prefs.setString(
+    'backend_url',
+    dotenv.env['BACKEND_URL'] ?? 'https://raikeshacks-production.up.railway.app',
+  );
   await BackgroundServiceManager.configure();
   runApp(const MyApp());
 }
@@ -62,6 +70,7 @@ class _AuthGateState extends State<AuthGate> {
   final ConnectionService _connectionService = ConnectionService();
   final WebSocketService _webSocketService = WebSocketService();
   final FcmService _fcmService = FcmService();
+  final BleDiscoveryService _bleService = BleDiscoveryService();
   GoogleSignInAccount? _currentUser;
   bool _isLoading = true;
   bool _onboardingComplete = false;
@@ -74,7 +83,8 @@ class _AuthGateState extends State<AuthGate> {
     // On Android, google_sign_in uses the OAuth client registered in
     // Google Cloud Console (matched by package name + SHA-1) automatically.
     // clientId is only needed for iOS, macOS, and web.
-    final needsClientId = kIsWeb ||
+    final needsClientId =
+        kIsWeb ||
         defaultTargetPlatform == TargetPlatform.iOS ||
         defaultTargetPlatform == TargetPlatform.macOS;
     _googleSignIn = GoogleSignIn(
@@ -91,6 +101,7 @@ class _AuthGateState extends State<AuthGate> {
   Future<void> _initNotifications() async {
     await _notificationService.init();
     _nearbyService.setNotificationService(_notificationService);
+    _connectionService.setNotificationService(_notificationService);
   }
 
   Future<void> _trySignInSilently() async {
@@ -142,16 +153,29 @@ class _AuthGateState extends State<AuthGate> {
     // Initialize ConnectionService
     await _connectionService.initialize();
 
+    // Initialize BLE discovery and wire to ConnectionService
+    await _bleService.initialize();
+    _bleService.onPeerDiscovered = (uid) =>
+        _connectionService.onPeerDiscovered(uid);
+
     // Connect WebSocket for real-time events
-    final baseUrl = dotenv.env['BACKEND_URL'] ?? 'https://raikeshacks-production.up.railway.app';
+    final baseUrl =
+        dotenv.env['BACKEND_URL'] ??
+        'https://raikeshacks-production.up.railway.app';
     if (_connectionService.myUid != null) {
-      _webSocketService.onMatchFound = (_) => _connectionService.refreshConnections();
-      _webSocketService.onConnectionAccepted = (_) => _connectionService.refreshConnections();
-      _webSocketService.onConnectionComplete = (_) => _connectionService.refreshConnections();
+      _webSocketService.onMatchFound = (_) =>
+          _connectionService.refreshConnections();
+      _webSocketService.onConnectionAccepted = (_) =>
+          _connectionService.refreshConnections();
+      _webSocketService.onConnectionComplete = (_) =>
+          _connectionService.refreshConnections();
       _webSocketService.connect(_connectionService.myUid!, baseUrl);
 
       // Initialize FCM
-      await _fcmService.initialize(_connectionService.myUid!, _notificationService);
+      await _fcmService.initialize(
+        _connectionService.myUid!,
+        _notificationService,
+      );
     }
   }
 
@@ -168,15 +192,16 @@ class _AuthGateState extends State<AuthGate> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Sign in failed: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Sign in failed: $e')));
       }
     }
   }
 
   Future<void> _handleSignOut() async {
     await BackgroundServiceManager.stop();
+    await _bleService.stopAll();
     _webSocketService.disconnect();
     await _nearbyService.stopAll();
     await _googleSignIn.signOut();
@@ -191,6 +216,7 @@ class _AuthGateState extends State<AuthGate> {
   @override
   void dispose() {
     _webSocketService.disconnect();
+    _bleService.dispose();
     _connectionService.dispose();
     _nearbyService.dispose();
     super.dispose();
@@ -199,9 +225,7 @@ class _AuthGateState extends State<AuthGate> {
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
-      );
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
     if (_currentUser == null) {
@@ -209,7 +233,9 @@ class _AuthGateState extends State<AuthGate> {
       return Scaffold(
         body: SafeArea(
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.screenPadding),
+            padding: const EdgeInsets.symmetric(
+              horizontal: AppSpacing.screenPadding,
+            ),
             child: Column(
               children: [
                 const Spacer(flex: 3),
@@ -276,6 +302,7 @@ class _AuthGateState extends State<AuthGate> {
       onSignOut: _handleSignOut,
       nearbyService: _nearbyService,
       connectionService: _connectionService,
+      bleService: _bleService,
     );
   }
 }

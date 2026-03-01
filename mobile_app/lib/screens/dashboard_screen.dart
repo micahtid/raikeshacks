@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/connection_model.dart';
 import '../services/backend_service.dart';
+import '../services/ble_discovery_service.dart';
 import '../services/connection_service.dart';
 import '../services/background_service.dart';
 import '../services/nearby_service.dart';
@@ -20,6 +21,7 @@ class DashboardScreen extends StatefulWidget {
   final VoidCallback onSignOut;
   final NearbyService nearbyService;
   final ConnectionService connectionService;
+  final BleDiscoveryService bleService;
 
   const DashboardScreen({
     super.key,
@@ -28,6 +30,7 @@ class DashboardScreen extends StatefulWidget {
     required this.onSignOut,
     required this.nearbyService,
     required this.connectionService,
+    required this.bleService,
   });
 
   @override
@@ -42,6 +45,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   NearbyService get _svc => widget.nearbyService;
   ConnectionService get _connSvc => widget.connectionService;
+  BleDiscoveryService get _bleSvc => widget.bleService;
   String get _firstName => widget.displayName.split(' ').first;
 
   @override
@@ -49,6 +53,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     super.initState();
     _svc.addListener(_onChanged);
     _connSvc.addListener(_onChanged);
+    _bleSvc.addListener(_onChanged);
     _startScanning();
   }
 
@@ -56,6 +61,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   void dispose() {
     _svc.removeListener(_onChanged);
     _connSvc.removeListener(_onChanged);
+    _bleSvc.removeListener(_onChanged);
     super.dispose();
   }
 
@@ -66,13 +72,26 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Future<void> _startScanning() async {
     final granted = await _svc.requestPermissions();
     if (!granted) return;
-    await _svc.startBoth();
+
+    // BLE advertising BEFORE anything else — Nearby Connections grabs the BLE
+    // advertising slot internally, which blocks flutter_ble_peripheral.
+    await _bleSvc.startAdvertising();
+
+    // Start foreground service — runs BLE scanning in its own background
+    // isolate so peer discovery continues when the app is minimized.
+    // The main Dart isolate is paused by Android when backgrounded, so
+    // scanning MUST happen in the background service isolate.
     await BackgroundServiceManager.start();
+
+    // Nearby Connections (foreground only, richer payload exchange).
+    await _svc.startBoth();
+
     if (mounted) setState(() => _isScanning = true);
   }
 
   Future<void> _stopScanning() async {
     await BackgroundServiceManager.stop();
+    await _bleSvc.stopAll();
     await _svc.stopAll();
     if (mounted) setState(() => _isScanning = false);
   }

@@ -6,11 +6,18 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/connection_model.dart';
 import 'backend_service.dart';
 import 'nearby_service.dart';
+import 'notification_service.dart';
 
 /// Central service managing all connection state.
 class ConnectionService extends ChangeNotifier {
   /// All connections keyed by connection_id.
   final Map<String, ConnectionModel> connections = {};
+
+  NotificationService? _notificationService;
+
+  void setNotificationService(NotificationService service) {
+    _notificationService = service;
+  }
 
   /// Cached peer profile data keyed by uid.
   final Map<String, Map<String, dynamic>> peerProfiles = {};
@@ -43,8 +50,13 @@ class ConnectionService extends ChangeNotifier {
 
     if (myUid == null) return;
 
-    // Only the alphabetically-first user creates the connection to avoid duplicates
-    if (myUid!.compareTo(peerUid) > 0) return;
+    // Immediately fetch profile and show a local notification so both users get alerted.
+    await _ensurePeerProfile(peerUid);
+    final profile = peerProfiles[peerUid];
+    if (profile != null) {
+      final peerName = profile['full_name'] as String? ?? 'Someone';
+      _notificationService?.showNearbyNotification(peerName);
+    }
 
     final connectionId = _makeConnectionId(myUid!, peerUid);
     if (connections.containsKey(connectionId)) return;
@@ -53,8 +65,6 @@ class ConnectionService extends ChangeNotifier {
     final conn = await BackendService.createConnection(myUid!, peerUid);
     if (conn != null) {
       connections[conn.connectionId] = conn;
-      // Fetch peer profile if not cached
-      await _ensurePeerProfile(peerUid);
       notifyListeners();
     }
   }
