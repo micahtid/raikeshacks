@@ -380,8 +380,8 @@ async def accept_connection_endpoint(connection_id: str, body: ConnectionAccept)
         }
         await ws_manager.send_to_user(other_uid, event)
         await send_push_notification(
-            other_uid, "Someone accepted!",
-            "A match accepted your connection. Check it out!",
+            other_uid, "Someone wants to connect!",
+            "Someone wants to connect! Check your Requests.",
             {"connection_id": connection_id},
         )
 
@@ -427,6 +427,87 @@ async def notify_nearby(connection_id: str):
     await ws_manager.broadcast_to_users([conn.uid1, conn.uid2], event)
 
     return conn
+
+
+# ── FCM test endpoint ──────────────────────────────────────────────────
+
+
+class FakeConnectionBody(BaseModel):
+    uid1: str
+    uid2: str
+
+
+@app.post("/test/fake-connection")
+async def test_fake_connection(body: FakeConnectionBody):
+    """Create (or fetch) a connection between two users and send FCM pushes to both."""
+    uid1, uid2 = sorted([body.uid1, body.uid2])
+
+    # Validate both students exist
+    profile1 = await get_student(uid1)
+    profile2 = await get_student(uid2)
+    if profile1 is None or profile2 is None:
+        missing = uid1 if profile1 is None else uid2
+        raise HTTPException(status_code=404, detail=f"Student {missing} not found")
+
+    # Check FCM tokens
+    db = get_db()
+    doc1 = await db.student_profiles.find_one({"uid": uid1}, {"fcm_token": 1})
+    doc2 = await db.student_profiles.find_one({"uid": uid2}, {"fcm_token": 1})
+    token1 = doc1.get("fcm_token") if doc1 else None
+    token2 = doc2.get("fcm_token") if doc2 else None
+
+    if not token1 or not token2:
+        missing_tokens = []
+        if not token1:
+            missing_tokens.append(uid1)
+        if not token2:
+            missing_tokens.append(uid2)
+        raise HTTPException(
+            status_code=400,
+            detail=f"Missing FCM token for: {', '.join(missing_tokens)}",
+        )
+
+    # Create or fetch existing connection
+    connection_id = make_connection_id(uid1, uid2)
+    existing = await get_connection(connection_id)
+    if existing:
+        connection = existing
+    else:
+        vec1 = vectorize_profile(profile1)
+        vec2 = vectorize_profile(profile2)
+        match_score = compute_match(profile1, vec1, profile2, vec2, Weights())
+        match_percentage = round(match_score.score * 100, 1)
+        now = datetime.now(timezone.utc)
+        conn_doc = {
+            "connection_id": connection_id,
+            "uid1": uid1,
+            "uid2": uid2,
+            "uid1_accepted": False,
+            "uid2_accepted": False,
+            "match_percentage": match_percentage,
+            "uid1_summary": None,
+            "uid2_summary": None,
+            "notification_message": None,
+            "created_at": now.isoformat(),
+            "updated_at": None,
+            "last_nearby_notified_at": None,
+        }
+        connection = await upsert_connection(conn_doc)
+
+    # Send FCM push to both users
+    notif_msg = f"Test match ({connection.match_percentage:.0f}%)!"
+    results = {}
+    for uid in [uid1, uid2]:
+        ok = await send_push_notification(
+            uid, "New Match!", notif_msg, {"connection_id": connection_id}
+        )
+        results[uid] = "sent" if ok else "failed"
+
+    return {
+        "connection_id": connection_id,
+        "match_percentage": connection.match_percentage,
+        "fcm_results": results,
+    }
 
 
 # ── Chat endpoints ──────────────────────────────────────────────────────

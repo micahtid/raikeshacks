@@ -34,6 +34,9 @@ Color _anonColor(String connectionId) {
   return _anonAvatarColors[hash % _anonAvatarColors.length];
 }
 
+// ── Card button modes ────────────────────────────────────────────────────────
+enum CardButtonMode { none, connect, pending, accept }
+
 // ── Dashboard screen ─────────────────────────────────────────────────────────
 
 class DashboardScreen extends StatefulWidget {
@@ -59,6 +62,7 @@ class DashboardScreen extends StatefulWidget {
 class _DashboardScreenState extends State<DashboardScreen> {
   int _selectedTab = 0;
   bool _isScanning = false;
+  bool _isTogglingBluetooth = false;
   bool _isDeleting = false;
   bool _isClearingData = false;
 
@@ -86,17 +90,29 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Future<void> _startScanning() async {
-    final granted = await _svc.requestPermissions();
-    if (!granted) return;
-    await _svc.startBoth();
-    await BackgroundServiceManager.start();
-    if (mounted) setState(() => _isScanning = true);
+    if (_isTogglingBluetooth) return;
+    setState(() => _isTogglingBluetooth = true);
+    try {
+      final granted = await _svc.requestPermissions();
+      if (!granted) return;
+      await _svc.startBoth();
+      await BackgroundServiceManager.start();
+      if (mounted) setState(() => _isScanning = true);
+    } finally {
+      if (mounted) setState(() => _isTogglingBluetooth = false);
+    }
   }
 
   Future<void> _stopScanning() async {
-    await BackgroundServiceManager.stop();
-    await _svc.stopAll();
-    if (mounted) setState(() => _isScanning = false);
+    if (_isTogglingBluetooth) return;
+    setState(() => _isTogglingBluetooth = true);
+    try {
+      await BackgroundServiceManager.stop();
+      await _svc.stopAll();
+      if (mounted) setState(() => _isScanning = false);
+    } finally {
+      if (mounted) setState(() => _isTogglingBluetooth = false);
+    }
   }
 
   Future<void> _refreshDashboard() async {
@@ -379,12 +395,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   // ── Dashboard tab ──────────────────────────────────────────────────────
 
+  CardButtonMode _buttonModeFor(ConnectionModel conn) {
+    final myUid = _connSvc.myUid ?? '';
+    if (conn.isComplete) return CardButtonMode.none; // chat button shown separately
+    if (conn.hasAccepted(myUid)) return CardButtonMode.pending;
+    final otherUid = conn.otherUid(myUid);
+    if (conn.hasAccepted(otherUid)) return CardButtonMode.accept;
+    return CardButtonMode.connect;
+  }
+
   Widget _buildConnectionSection(
     ThemeData theme,
     String title,
-    List<ConnectionModel> connections,
-    bool showAcceptButton,
-  ) {
+    List<ConnectionModel> connections, {
+    CardButtonMode? overrideMode,
+  }) {
     if (connections.isEmpty) return const SizedBox.shrink();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -427,6 +452,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
         ),
         ...connections.map((conn) {
+          final mode = overrideMode ?? _buttonModeFor(conn);
           return Padding(
             padding: const EdgeInsets.fromLTRB(
               AppSpacing.screenPadding, 0, AppSpacing.screenPadding, 12,
@@ -437,10 +463,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
               peerInitials: _peerInitials(conn),
               myUid: _connSvc.myUid ?? '',
               isAnonymous: _isAnonymous(conn),
-              showAcceptButton: showAcceptButton && !conn.hasAccepted(_connSvc.myUid ?? ''),
+              buttonMode: mode,
               showChatButton: conn.isComplete,
               onTap: () => _showProfileSheet(conn),
-              onAccept: () => _connSvc.acceptConnection(conn.connectionId),
+              onAction: () => _connSvc.acceptConnection(conn.connectionId),
               onChat: () => _pushChatScreen(conn),
             ),
           );
@@ -451,7 +477,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   Widget _buildDashboardContent(ThemeData theme) {
     final connected = _connSvc.connectedNearby;
-    final pending = _connSvc.pendingRequests;
+    final incoming = _connSvc.incomingRequests;
+    final discovered = _connSvc.discoveredMatches;
+    final sent = _connSvc.sentRequests;
+    // Combine discovered + sent into one "Discover" section
+    final discoverList = [...discovered, ...sent];
 
     return RefreshIndicator(
       onRefresh: _refreshDashboard,
@@ -477,6 +507,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             child: _StatusBanner(
               message: _svc.statusMessage,
               isScanning: _isScanning,
+              isToggling: _isTogglingBluetooth,
               onToggle: _isScanning ? _stopScanning : _startScanning,
             ),
           ),
@@ -489,8 +520,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
               child: _SkeletonCard(),
             ),
           // ── Profile card sections ──
-          _buildConnectionSection(theme, 'Connected', connected, false),
-          _buildConnectionSection(theme, 'Requests', pending, true),
+          _buildConnectionSection(theme, 'Connected', connected),
+          _buildConnectionSection(theme, 'Requests', incoming, overrideMode: CardButtonMode.accept),
+          _buildConnectionSection(theme, 'Discover', discoverList),
           const SizedBox(height: 20),
         ],
       ),
@@ -521,6 +553,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
         bool buttonEnabled;
         Color buttonColor;
         VoidCallback? buttonAction;
+        final otherUid = conn.otherUid(myUid);
+        final otherAccepted = conn.hasAccepted(otherUid);
 
         if (isComplete) {
           buttonLabel = 'Chat';
@@ -535,8 +569,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
           buttonEnabled = false;
           buttonColor = AppColors.inactive;
           buttonAction = null;
-        } else {
+        } else if (otherAccepted) {
+          // They connected first — show Accept
           buttonLabel = 'Accept';
+          buttonEnabled = true;
+          buttonColor = AppColors.primary;
+          buttonAction = () {
+            _connSvc.acceptConnection(conn.connectionId);
+            Navigator.pop(ctx);
+          };
+        } else {
+          // Neither connected — show Connect
+          buttonLabel = 'Connect';
           buttonEnabled = true;
           buttonColor = AppColors.primary;
           buttonAction = () {
@@ -1030,10 +1074,10 @@ class _ConnectionCard extends StatelessWidget {
   final String peerInitials;
   final String myUid;
   final bool isAnonymous;
-  final bool showAcceptButton;
+  final CardButtonMode buttonMode;
   final bool showChatButton;
   final VoidCallback onTap;
-  final VoidCallback onAccept;
+  final VoidCallback onAction;
   final VoidCallback? onChat;
 
   const _ConnectionCard({
@@ -1042,10 +1086,10 @@ class _ConnectionCard extends StatelessWidget {
     required this.peerInitials,
     required this.myUid,
     this.isAnonymous = false,
-    required this.showAcceptButton,
+    required this.buttonMode,
     required this.showChatButton,
     required this.onTap,
-    required this.onAccept,
+    required this.onAction,
     this.onChat,
   });
 
@@ -1111,11 +1155,11 @@ class _ConnectionCard extends StatelessWidget {
                 ],
               ),
             ),
-            // Accept button
-            if (showAcceptButton) ...[
+            // Action button (Connect / Pending / Accept)
+            if (buttonMode == CardButtonMode.connect || buttonMode == CardButtonMode.accept) ...[
               const SizedBox(width: 8),
               GestureDetector(
-                onTap: onAccept,
+                onTap: onAction,
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
                   decoration: BoxDecoration(
@@ -1123,12 +1167,29 @@ class _ConnectionCard extends StatelessWidget {
                     borderRadius: BorderRadius.circular(10),
                   ),
                   child: Text(
-                    'Accept',
+                    buttonMode == CardButtonMode.accept ? 'Accept' : 'Connect',
                     style: GoogleFonts.sora(
                       fontSize: 13,
                       fontWeight: FontWeight.w600,
                       color: AppColors.onPrimary,
                     ),
+                  ),
+                ),
+              ),
+            ] else if (buttonMode == CardButtonMode.pending) ...[
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
+                decoration: BoxDecoration(
+                  color: AppColors.inactive,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Text(
+                  'Pending',
+                  style: GoogleFonts.sora(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.textTertiary,
                   ),
                 ),
               ),
@@ -1414,11 +1475,13 @@ class _SkeletonCard extends StatelessWidget {
 class _StatusBanner extends StatelessWidget {
   final String message;
   final bool isScanning;
+  final bool isToggling;
   final VoidCallback onToggle;
 
   const _StatusBanner({
     required this.message,
     required this.isScanning,
+    this.isToggling = false,
     required this.onToggle,
   });
 
@@ -1510,7 +1573,7 @@ class _StatusBanner extends StatelessWidget {
                   ),
                   const SizedBox(width: 12),
                   GestureDetector(
-                    onTap: onToggle,
+                    onTap: isToggling ? null : onToggle,
                     child: Container(
                       width: 42,
                       height: 42,

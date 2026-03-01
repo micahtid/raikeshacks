@@ -44,6 +44,7 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'knkt',
+      debugShowCheckedModeBanner: false,
       theme: buildAppTheme(),
       home: const AuthGate(),
     );
