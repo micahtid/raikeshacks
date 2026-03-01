@@ -5,8 +5,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/peer_device.dart';
+import '../services/backend_service.dart';
 import '../services/nearby_service.dart';
 import '../theme.dart';
 import 'chat_screen.dart';
@@ -194,31 +196,28 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
     setState(() => _isDeleting = true);
 
-    final url = dotenv.env['DELETE_ACCOUNT_URL'];
-    if (url == null || url.isEmpty) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Delete URL not configured')),
-        );
-        setState(() => _isDeleting = false);
-      }
-      return;
-    }
-
     try {
-      final response = await http.delete(
-        Uri.parse(url),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'user_id': widget.displayName}),
-      );
-      if (response.statusCode >= 200 && response.statusCode < 300) {
+      final prefs = await SharedPreferences.getInstance();
+      final uid = prefs.getString('student_uid');
+
+      if (uid == null || uid.isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('No account found to delete')),
+          );
+          setState(() => _isDeleting = false);
+        }
+        return;
+      }
+
+      final success = await BackendService.deleteStudent(uid);
+      if (success) {
+        await prefs.remove('student_uid');
         widget.onSignOut();
       } else {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Failed to delete account: ${response.statusCode}'),
-            ),
+            const SnackBar(content: Text('Failed to delete account')),
           );
         }
       }

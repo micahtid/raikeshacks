@@ -3,3 +3,7 @@ uvicorn[standard]
 motor
 pydantic[email]
 python-dotenv
+httpx
+python-docx
+PyPDF2
+python-multipart

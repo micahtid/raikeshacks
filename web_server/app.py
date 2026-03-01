@@ -1,7 +1,7 @@
 from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, File, HTTPException, Query, UploadFile
 
 load_dotenv()
 
@@ -21,6 +21,7 @@ from models.matching import (
     MatchScoreBreakdown,
     WeightsUsed,
 )
+from services.resume_parser import parse_resume, ParsedResume
 from services.similarity import find_matches, Weights
 
 
@@ -32,6 +33,12 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="RaikeShacks API", lifespan=lifespan)
+
+
+@app.post("/parse-resume", response_model=ParsedResume)
+async def parse_resume_endpoint(file: UploadFile = File(...)):
+    data = await file.read()
+    return await parse_resume(data, file.filename or "resume.pdf")
 
 
 @app.post("/students", response_model=StudentProfile, status_code=201)
