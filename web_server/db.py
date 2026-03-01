@@ -31,6 +31,27 @@ async def connect_db() -> AsyncIOMotorDatabase:
         if k not in ("$schema", "$id", "title", "description")
     }
 
+    # MongoDB $jsonSchema doesn't support several standard JSON Schema
+    # keywords.  Strip them recursively so startup never fails.
+    _UNSUPPORTED_KEYS = {"format", "examples", "$comment"}
+
+    def _mongo_compat(obj):
+        if isinstance(obj, dict):
+            for key in list(obj.keys()):
+                if key in _UNSUPPORTED_KEYS:
+                    obj.pop(key)
+            # MongoDB uses "int" / "long" instead of "integer"
+            if obj.get("type") == "integer":
+                obj["bsonType"] = "int"
+                del obj["type"]
+            for v in obj.values():
+                _mongo_compat(v)
+        elif isinstance(obj, list):
+            for item in obj:
+                _mongo_compat(item)
+
+    _mongo_compat(validator)
+
     existing = await db.list_collection_names()
     if "student_profiles" not in existing:
         await db.create_collection(
