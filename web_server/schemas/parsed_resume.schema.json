@@ -1,0 +1,15 @@
+{
+  "type": "object",
+  "required": ["parsed_at"],
+  "properties": {
+    "filename": { "type": ["string", "null"] },
+    "parsed_at": { "type": "string" },
+    "university": { "type": ["string", "null"] },
+    "graduation_year": { "type": ["number", "null"] },
+    "major": { "type": "array", "items": { "type": "string" } },
+    "minor": { "type": "array", "items": { "type": "string" } },
+    "skills": { "type": "array", "items": { "type": "string" } },
+    "industry": { "type": "array", "items": { "type": "string" } },
+    "project_one_liner": { "type": ["string", "null"] }
+  }
+}
