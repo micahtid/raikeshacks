@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../services/backend_service.dart';
@@ -98,6 +99,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   final Set<String> _resumeSkills = {};
 
   bool _isSubmitting = false;
+  bool _showingQuote = false;
 
   bool get _skipProject =>
       _selectedFocuses.contains('Looking for opportunities');
@@ -280,7 +282,12 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   };
 
   Future<void> _submitAndFinish() async {
-    setState(() => _isSubmitting = true);
+    if (_isSubmitting) return;
+
+    setState(() {
+      _isSubmitting = true;
+      _showingQuote = true;
+    });
 
     final data = {
       'identity': {
@@ -323,15 +330,24 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     };
 
     try {
-      final result = await BackendService.createStudent(data);
-      if (result != null && result['uid'] != null) {
+      Map<String, dynamic>? result;
+      await Future.wait([
+        BackendService.createStudent(data).then((r) => result = r),
+        Future.delayed(const Duration(seconds: 2)),
+      ]);
+
+      if (result != null && result!['uid'] != null) {
         final prefs = await SharedPreferences.getInstance();
-        await prefs.setString('student_uid', result['uid'] as String);
+        await prefs.setString('student_uid', result!['uid'] as String);
         if (mounted) {
           widget.onComplete();
         }
       } else {
         if (mounted) {
+          setState(() {
+            _showingQuote = false;
+            _isSubmitting = false;
+          });
           ScaffoldMessenger.of(context).showMaterialBanner(
             MaterialBanner(
               content: const Text('Failed to create profile. Please try again.'),
@@ -347,6 +363,10 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       }
     } catch (e) {
       if (mounted) {
+        setState(() {
+          _showingQuote = false;
+          _isSubmitting = false;
+        });
         ScaffoldMessenger.of(context).showMaterialBanner(
           MaterialBanner(
             content: Text('Failed to create profile: $e'),
@@ -359,13 +379,33 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           ),
         );
       }
-    } finally {
-      if (mounted) setState(() => _isSubmitting = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    // Quote screen shown while submitting
+    if (_showingQuote) {
+      return Scaffold(
+        backgroundColor: AppColors.primary,
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 48),
+            child: Text(
+              'Great things happen when\nthe right people connect.',
+              textAlign: TextAlign.center,
+              style: GoogleFonts.sora(
+                fontSize: 20,
+                fontWeight: FontWeight.w500,
+                color: AppColors.onPrimary,
+                height: 1.6,
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
     final steps = _steps;
     final safeStep = _currentStep.clamp(0, steps.length - 1);
     final step = steps[safeStep];
@@ -380,33 +420,54 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             // Top bar with sign out
             Padding(
               padding: const EdgeInsets.fromLTRB(
-                AppSpacing.screenPadding, 16, 8, 0,
+                AppSpacing.screenPadding, 16, 8, 8,
               ),
               child: Row(
                 children: [
-                  if (safeStep > 0)
-                    GestureDetector(
-                      onTap: _back,
-                      child: const Icon(
-                        Icons.arrow_back_ios_new,
-                        size: 20,
-                        color: AppColors.primary,
-                      ),
+                  GestureDetector(
+                    onTap: safeStep > 0 ? _back : widget.onSignOut,
+                    child: const Icon(
+                      Icons.arrow_back_ios_new,
+                      size: 20,
+                      color: AppColors.primary,
                     ),
+                  ),
                   const Spacer(),
                 ],
               ),
             ),
-            // Progress bar
+            // Progress bar — grows from center outward
             Padding(
               padding: const EdgeInsets.fromLTRB(
                 AppSpacing.screenPadding, 12, AppSpacing.screenPadding, 32,
               ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(AppRadius.progressBar),
-                child: LinearProgressIndicator(
-                  value: (safeStep + 1) / steps.length,
-                  minHeight: AppSpacing.progressBarHeight,
+              child: Container(
+                height: AppSpacing.progressBarHeight,
+                decoration: BoxDecoration(
+                  color: AppColors.surfaceGray,
+                  border: Border.all(color: AppColors.border, width: 0.5),
+                  borderRadius: BorderRadius.circular(AppRadius.progressBar),
+                ),
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final progress = (safeStep + 1) / steps.length;
+                    return Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        AnimatedContainer(
+                          duration: const Duration(milliseconds: 300),
+                          curve: Curves.easeInOut,
+                          width: constraints.maxWidth * progress,
+                          height: AppSpacing.progressBarHeight,
+                          decoration: BoxDecoration(
+                            color: AppColors.primary,
+                            borderRadius:
+                                BorderRadius.circular(AppRadius.progressBar),
+                          ),
+                        ),
+                      ],
+                    );
+                  },
                 ),
               ),
             ),
@@ -439,16 +500,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
               ),
               child: FilledButton(
                 onPressed: canProceed ? _next : null,
-                child: _isSubmitting
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Colors.white,
-                        ),
-                      )
-                    : Text(isLastStep ? 'Finish' : 'Next'),
+                child: Text(isLastStep ? 'Finish' : 'Next'),
               ),
             ),
           ],
@@ -467,7 +519,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     };
   }
 
-  // ── Resume ──────────────────────────────────────────────────────────
+  // -- Resume ---------------------------------------------------------------
 
   Widget _buildResumeStep(ThemeData theme) {
     final hasFile = _resumeFileName != null;
@@ -594,7 +646,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     );
   }
 
-  // ── Identity ────────────────────────────────────────────────────────
+  // -- Identity -------------------------------------------------------------
 
   Widget _buildIdentityStep(ThemeData theme) {
     return SingleChildScrollView(
@@ -658,7 +710,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     );
   }
 
-  // ── Focus ───────────────────────────────────────────────────────────
+  // -- Focus ----------------------------------------------------------------
 
   Widget _buildFocusStep(ThemeData theme) {
     return SingleChildScrollView(
@@ -701,7 +753,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     );
   }
 
-  // ── Project ─────────────────────────────────────────────────────────
+  // -- Project --------------------------------------------------------------
 
   Widget _buildProjectStep(ThemeData theme) {
     return SingleChildScrollView(
@@ -797,10 +849,11 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                   width: 48,
                   height: 48,
                   decoration: BoxDecoration(
-                    color: AppColors.primary,
+                    color: AppColors.surfaceGray,
                     borderRadius: BorderRadius.circular(AppRadius.button),
+                    border: Border.all(color: AppColors.border, width: 1),
                   ),
-                  child: const Icon(Icons.add, color: AppColors.onPrimary),
+                  child: const Icon(Icons.add, color: AppColors.textPrimary),
                 ),
               ),
             ],
@@ -811,7 +864,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     );
   }
 
-  // ── Skills ──────────────────────────────────────────────────────────
+  // -- Skills ---------------------------------------------------------------
 
   Widget _buildSkillsStep(ThemeData theme) {
     return SingleChildScrollView(
@@ -855,7 +908,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     );
   }
 
-  // ── Shared tag-input helper ─────────────────────────────────────────
+  // -- Shared tag-input helper (tags appear below the input) ----------------
 
   Widget _buildTagInput({
     required TextEditingController controller,
@@ -867,7 +920,34 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        Row(
+          children: [
+            Expanded(
+              child: TextField(
+                controller: controller,
+                decoration: InputDecoration(hintText: hint),
+                textInputAction: TextInputAction.done,
+                onSubmitted: (_) => onAdd(),
+              ),
+            ),
+            const SizedBox(width: 8),
+            GestureDetector(
+              onTap: onAdd,
+              child: Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: AppColors.surfaceGray,
+                  borderRadius: BorderRadius.circular(AppRadius.button),
+                  border: Border.all(color: AppColors.border, width: 1),
+                ),
+                child: const Icon(Icons.add, color: AppColors.textPrimary),
+              ),
+            ),
+          ],
+        ),
         if (tags.isNotEmpty) ...[
+          const SizedBox(height: 12),
           Wrap(
             spacing: 8,
             runSpacing: 8,
@@ -905,39 +985,13 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                     ))
                 .toList(),
           ),
-          const SizedBox(height: 12),
         ],
-        Row(
-          children: [
-            Expanded(
-              child: TextField(
-                controller: controller,
-                decoration: InputDecoration(hintText: hint),
-                textInputAction: TextInputAction.done,
-                onSubmitted: (_) => onAdd(),
-              ),
-            ),
-            const SizedBox(width: 8),
-            GestureDetector(
-              onTap: onAdd,
-              child: Container(
-                width: 48,
-                height: 48,
-                decoration: BoxDecoration(
-                  color: AppColors.primary,
-                  borderRadius: BorderRadius.circular(AppRadius.button),
-                ),
-                child: const Icon(Icons.add, color: AppColors.onPrimary),
-              ),
-            ),
-          ],
-        ),
       ],
     );
   }
 }
 
-// ── Selection item (replaces FilterChip / ChoiceChip) ─────────────────
+// -- Selection item (focus / stage cards) ------------------------------------
 
 class _SelectionItem extends StatelessWidget {
   final IconData? icon;
@@ -961,10 +1015,10 @@ class _SelectionItem extends StatelessWidget {
         height: AppSpacing.selectionItemHeight,
         padding: const EdgeInsets.symmetric(horizontal: 16),
         decoration: BoxDecoration(
-          color: selected ? AppColors.surfaceLightBlue : Colors.transparent,
+          color: selected ? AppColors.primary : Colors.transparent,
           borderRadius: BorderRadius.circular(AppRadius.card),
           border: Border.all(
-            color: selected ? AppColors.surfaceLightBlue : AppColors.border,
+            color: selected ? AppColors.primary : AppColors.border,
             width: 0.5,
           ),
         ),
@@ -974,21 +1028,21 @@ class _SelectionItem extends StatelessWidget {
               Icon(
                 icon,
                 size: 20,
-                color: selected ? AppColors.primary : AppColors.textSecondary,
+                color: selected ? AppColors.onPrimary : AppColors.textSecondary,
               ),
               const SizedBox(width: 14),
             ],
             Expanded(
               child: Text(
                 label,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 14,
-                  color: AppColors.textPrimary,
+                  color: selected ? AppColors.onPrimary : AppColors.textPrimary,
                 ),
               ),
             ),
             if (selected)
-              const Icon(Icons.check, size: 18, color: AppColors.primary),
+              const Icon(Icons.check, size: 18, color: AppColors.onPrimary),
           ],
         ),
       ),
@@ -996,7 +1050,7 @@ class _SelectionItem extends StatelessWidget {
   }
 }
 
-// ── Dashed border painter ─────────────────────────────────────────────
+// -- Dashed border painter --------------------------------------------------
 
 class _DashedBorderPainter extends CustomPainter {
   final Color color;
@@ -1050,7 +1104,7 @@ class _DashedBorderPainter extends CustomPainter {
       color != oldDelegate.color || strokeWidth != oldDelegate.strokeWidth;
 }
 
-// ── Domain chip (smaller, inline selection) ───────────────────────────
+// -- Domain chip (smaller, inline selection) --------------------------------
 
 class _DomainChip extends StatelessWidget {
   final String label;

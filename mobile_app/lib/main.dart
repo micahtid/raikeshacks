@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform, TargetPlatform;
 import 'firebase_options.dart';
@@ -186,8 +188,11 @@ class _AuthGateState extends State<AuthGate> {
 
   @override
   Widget build(BuildContext context) {
+    Widget child;
+
     if (_isLoading) {
-      return Scaffold(
+      child = Scaffold(
+        key: const ValueKey('loading'),
         backgroundColor: AppColors.primary,
         body: Center(
           child: CircularProgressIndicator(
@@ -195,79 +200,259 @@ class _AuthGateState extends State<AuthGate> {
           ),
         ),
       );
-    }
-
-    if (_currentUser == null) {
-      final theme = Theme.of(context);
-      return Scaffold(
-        body: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.screenPadding),
-            child: Column(
-              children: [
-                const Spacer(flex: 3),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(24),
-                  child: Image.asset(
-                    'assets/icon/app_icon.png',
-                    width: 96,
-                    height: 96,
-                  ),
-                ),
-                const SizedBox(height: AppSpacing.sectionGapSmall),
-                Text(
-                  'knkt',
-                  style: GoogleFonts.sora(
-                    fontSize: 32,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.textPrimary,
-                  ),
-                ),
-                const SizedBox(height: 10),
-                Text(
-                  'Find your people. Build together.',
-                  style: GoogleFonts.sora(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w400,
-                    color: AppColors.textSecondary,
-                  ),
-                ),
-                const Spacer(flex: 4),
-                FilledButton.icon(
-                  onPressed: _handleSignIn,
-                  icon: const Icon(Icons.login, size: 20),
-                  label: const Text('Sign in with Google'),
-                ),
-                const SizedBox(height: AppSpacing.screenPadding),
-              ],
-            ),
-          ),
-        ),
+    } else if (_currentUser == null) {
+      child = _SignInPage(
+        key: const ValueKey('signin'),
+        onSignIn: _handleSignIn,
       );
-    }
-
-    if (!_onboardingComplete) {
-      return OnboardingScreen(
+    } else if (!_onboardingComplete) {
+      child = OnboardingScreen(
+        key: const ValueKey('onboarding'),
         onComplete: _onOnboardingComplete,
         onSignOut: _handleSignOut,
         fullName: _currentUser!.displayName ?? '',
         email: _currentUser!.email,
         photoUrl: _currentUser!.photoUrl,
       );
+    } else {
+      final displayName = _currentUser!.displayName ?? _currentUser!.email;
+      if (_nearbyService.displayName != displayName) {
+        _nearbyService.setDisplayName(displayName);
+      }
+      child = DashboardScreen(
+        key: const ValueKey('dashboard'),
+        userPhotoUrl: _currentUser!.photoUrl,
+        displayName: displayName,
+        onSignOut: _handleSignOut,
+        nearbyService: _nearbyService,
+        connectionService: _connectionService,
+      );
     }
 
-    // Set the display name from the Google account for Nearby Connections.
-    final displayName = _currentUser!.displayName ?? _currentUser!.email;
-    if (_nearbyService.displayName != displayName) {
-      _nearbyService.setDisplayName(displayName);
-    }
-
-    return DashboardScreen(
-      userPhotoUrl: _currentUser!.photoUrl,
-      displayName: displayName,
-      onSignOut: _handleSignOut,
-      nearbyService: _nearbyService,
-      connectionService: _connectionService,
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 600),
+      child: child,
     );
   }
+}
+
+// ---------------------------------------------------------------------------
+// Sign-in page with animated network graph
+// ---------------------------------------------------------------------------
+
+class _SignInPage extends StatefulWidget {
+  final VoidCallback onSignIn;
+  const _SignInPage({super.key, required this.onSignIn});
+
+  @override
+  State<_SignInPage> createState() => _SignInPageState();
+}
+
+class _SignInPageState extends State<_SignInPage>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _graphController;
+
+  @override
+  void initState() {
+    super.initState();
+    _graphController = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 15),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _graphController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final height = MediaQuery.of(context).size.height;
+
+    return Scaffold(
+      body: Stack(
+        children: [
+          // Full-screen lilac background
+          Positioned.fill(
+            child: Container(color: AppColors.primary),
+          ),
+
+          // Network graph animation (upper area, compact)
+          Positioned(
+            top: height * 0.04,
+            left: 24,
+            right: 24,
+            height: height * 0.46,
+            child: AnimatedBuilder(
+              animation: _graphController,
+              builder: (context, child) {
+                return CustomPaint(
+                  painter:
+                      _NetworkGraphPainter(progress: _graphController.value),
+                  size: Size.infinite,
+                );
+              },
+            ),
+          ),
+
+          // Dark bottom container with semicircle top
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            height: height * 0.48,
+            child: Container(
+              decoration: const BoxDecoration(
+                color: AppColors.surface,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(40)),
+              ),
+              child: SafeArea(
+                top: false,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                    AppSpacing.screenPadding,
+                    40,
+                    AppSpacing.screenPadding,
+                    AppSpacing.screenPadding,
+                  ),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Spacer(),
+                      Text(
+                        'knkt',
+                        style: GoogleFonts.sora(
+                          fontSize: 32,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      Text(
+                        'Find your people. Build together.',
+                        style: GoogleFonts.sora(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w400,
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                      const Spacer(flex: 2),
+                      FilledButton.icon(
+                        onPressed: widget.onSignIn,
+                        icon: const Icon(Icons.login, size: 20),
+                        label: const Text('Sign in with Google'),
+                      ),
+                      const SizedBox(height: 16),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Network graph CustomPainter — nodes + edges that flash in waves
+// ---------------------------------------------------------------------------
+
+class _NetworkGraphPainter extends CustomPainter {
+  final double progress;
+
+  _NetworkGraphPainter({required this.progress});
+
+  // Node positions as fractions of the paint area
+  static const _nodes = [
+    Offset(0.15, 0.15),
+    Offset(0.40, 0.06),
+    Offset(0.65, 0.12),
+    Offset(0.88, 0.20),
+    Offset(0.10, 0.42),
+    Offset(0.35, 0.34),
+    Offset(0.60, 0.38),
+    Offset(0.85, 0.46),
+    Offset(0.22, 0.62),
+    Offset(0.50, 0.58),
+    Offset(0.78, 0.68),
+  ];
+
+  // Base radius per node for natural variation
+  static const _nodeRadii = [
+    7.0, 10.0, 6.0, 8.5, 9.0, 12.0, 7.5, 6.5, 11.0, 8.0, 9.5,
+  ];
+
+  // Edges connecting nodes
+  static const _edges = [
+    [0, 1], [1, 2], [2, 3],
+    [0, 4], [0, 5],
+    [1, 5], [1, 6],
+    [2, 6], [2, 7], [3, 7],
+    [4, 5], [5, 6], [6, 7],
+    [4, 8], [5, 9], [6, 9], [7, 10],
+    [8, 9], [9, 10],
+  ];
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final scaledNodes =
+        _nodes.map((n) => Offset(n.dx * size.width, n.dy * size.height)).toList();
+
+    final totalEdges = _edges.length;
+
+    // Draw edges — each one pulses based on its phase offset
+    for (int i = 0; i < totalEdges; i++) {
+      final phase = i / totalEdges;
+      // Sine wave gives smooth flash; each edge is offset by its phase
+      final raw = math.sin(2 * math.pi * (progress - phase));
+      // Clamp to [0,1] — only the positive half of the sine produces a flash
+      final pulse = raw.clamp(0.0, 1.0);
+
+      final baseAlpha = 0.10;
+      final flashAlpha = 0.45;
+      final alpha = baseAlpha + pulse * (flashAlpha - baseAlpha);
+      final width = 1.2 + pulse * 1.0;
+
+      final from = scaledNodes[_edges[i][0]];
+      final to = scaledNodes[_edges[i][1]];
+
+      canvas.drawLine(
+        from,
+        to,
+        Paint()
+          ..color = Colors.white.withValues(alpha: alpha)
+          ..strokeWidth = width,
+      );
+    }
+
+    // Draw nodes — gently pulse when adjacent edges are active
+    for (int n = 0; n < scaledNodes.length; n++) {
+      // Find max pulse of any edge touching this node
+      double maxPulse = 0;
+      for (int i = 0; i < totalEdges; i++) {
+        if (_edges[i][0] == n || _edges[i][1] == n) {
+          final phase = i / totalEdges;
+          final raw = math.sin(2 * math.pi * (progress - phase));
+          if (raw > maxPulse) maxPulse = raw.clamp(0.0, 1.0);
+        }
+      }
+
+      final nodeAlpha = 0.25 + maxPulse * 0.35;
+      final nodeRadius = _nodeRadii[n] + maxPulse * 2.5;
+
+      canvas.drawCircle(
+        scaledNodes[n],
+        nodeRadius,
+        Paint()..color = Colors.white.withValues(alpha: nodeAlpha),
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(_NetworkGraphPainter oldDelegate) =>
+      progress != oldDelegate.progress;
 }
