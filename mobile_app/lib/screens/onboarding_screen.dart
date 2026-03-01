@@ -225,8 +225,16 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     } catch (e) {
       if (mounted) {
         setState(() => _isParsing = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Resume parsing failed: $e')),
+        ScaffoldMessenger.of(context).showMaterialBanner(
+          MaterialBanner(
+            content: Text('Resume parsing failed: $e'),
+            actions: [
+              TextButton(
+                onPressed: () => ScaffoldMessenger.of(context).hideCurrentMaterialBanner(),
+                child: const Text('DISMISS'),
+              ),
+            ],
+          ),
         );
       }
     }
@@ -319,14 +327,36 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       if (result != null && result['uid'] != null) {
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString('student_uid', result['uid'] as String);
-      }
-      if (mounted) {
-        widget.onComplete();
+        if (mounted) {
+          widget.onComplete();
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showMaterialBanner(
+            MaterialBanner(
+              content: const Text('Failed to create profile. Please try again.'),
+              actions: [
+                TextButton(
+                  onPressed: () => ScaffoldMessenger.of(context).hideCurrentMaterialBanner(),
+                  child: const Text('DISMISS'),
+                ),
+              ],
+            ),
+          );
+        }
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to create profile: $e')),
+        ScaffoldMessenger.of(context).showMaterialBanner(
+          MaterialBanner(
+            content: Text('Failed to create profile: $e'),
+            actions: [
+              TextButton(
+                onPressed: () => ScaffoldMessenger.of(context).hideCurrentMaterialBanner(),
+                child: const Text('DISMISS'),
+              ),
+            ],
+          ),
         );
       }
     } finally {
