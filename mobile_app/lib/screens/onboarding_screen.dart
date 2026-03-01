@@ -229,9 +229,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           MaterialBanner(
             content: Text('Resume parsing failed: $e'),
             actions: [
-              TextButton(
+              IconButton(
+                icon: const Icon(Icons.close, size: 18),
                 onPressed: () => ScaffoldMessenger.of(context).hideCurrentMaterialBanner(),
-                child: const Text('DISMISS'),
               ),
             ],
           ),
@@ -336,9 +336,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             MaterialBanner(
               content: const Text('Failed to create profile. Please try again.'),
               actions: [
-                TextButton(
+                IconButton(
+                  icon: const Icon(Icons.close, size: 18),
                   onPressed: () => ScaffoldMessenger.of(context).hideCurrentMaterialBanner(),
-                  child: const Text('DISMISS'),
                 ),
               ],
             ),
@@ -394,10 +394,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                       ),
                     ),
                   const Spacer(),
-                  TextButton(
-                    onPressed: widget.onSignOut,
-                    child: const Text('Sign Out'),
-                  ),
                 ],
               ),
             ),
