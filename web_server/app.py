@@ -1,4 +1,7 @@
 from contextlib import asynccontextmanager
+from datetime import datetime
+from typing import Optional
+
 from dotenv import load_dotenv
 
 from fastapi import FastAPI, File, HTTPException, Query, UploadFile
@@ -20,6 +23,19 @@ from models.matching import (
     MatchResult,
     MatchScoreBreakdown,
     WeightsUsed,
+)
+from models.chat import (
+    Room,
+    RoomCreate,
+    RoomList,
+    Message,
+    MessageCreate,
+    MessageList,
+    get_or_create_room,
+    get_room,
+    get_rooms_for_user,
+    create_message,
+    get_messages,
 )
 from services.resume_parser import parse_resume, ParsedResume
 from services.similarity import find_matches, Weights
@@ -126,3 +142,50 @@ async def match_student(
             industry=round(weights.industry, 4),
         ),
     )
+
+
+# ── Chat endpoints ──────────────────────────────────────────────────────
+
+
+@app.post("/chat/rooms", response_model=Room, status_code=201)
+async def create_room(body: RoomCreate):
+    try:
+        return await get_or_create_room(body)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.get("/chat/rooms/{room_id}", response_model=Room)
+async def read_room(room_id: str):
+    room = await get_room(room_id)
+    if room is None:
+        raise HTTPException(status_code=404, detail="Room not found")
+    return room
+
+
+@app.get("/chat/users/{uid}/rooms", response_model=RoomList)
+async def list_user_rooms(uid: str):
+    rooms = await get_rooms_for_user(uid)
+    return RoomList(rooms=rooms)
+
+
+@app.post("/chat/rooms/{room_id}/messages", response_model=Message, status_code=201)
+async def send_message(room_id: str, body: MessageCreate):
+    try:
+        return await create_message(room_id, body)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+@app.get("/chat/rooms/{room_id}/messages", response_model=MessageList)
+async def list_messages(
+    room_id: str,
+    limit: int = Query(50, ge=1, le=200),
+    before: Optional[datetime] = Query(None),
+):
+    room = await get_room(room_id)
+    if room is None:
+        raise HTTPException(status_code=404, detail="Room not found")
+
+    messages, total = await get_messages(room_id, limit, before)
+    return MessageList(room_id=room_id, messages=messages, total=total)
