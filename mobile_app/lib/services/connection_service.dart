@@ -33,119 +33,10 @@ class ConnectionService extends ChangeNotifier {
     if (myUid == null) return;
 
     await refreshConnections();
-    _injectMockData();
     _pollTimer = Timer.periodic(
       const Duration(seconds: 20),
       (_) => refreshConnections(),
     );
-  }
-
-  /// Inject mock users for testing purposes.
-  void _injectMockData() {
-    if (myUid == null) return;
-
-    // ── Connected mock: Alex Chen (real name, both accepted, nearby) ──
-    const mockUid1 = 'mock_user_alex_001';
-    final connId1 = _makeConnectionId(myUid!, mockUid1);
-
-    connections[connId1] = ConnectionModel(
-      connectionId: connId1,
-      uid1: myUid!.compareTo(mockUid1) < 0 ? myUid! : mockUid1,
-      uid2: myUid!.compareTo(mockUid1) < 0 ? mockUid1 : myUid!,
-      uid1Accepted: true,
-      uid2Accepted: true,
-      matchPercentage: 87,
-      uid1Summary: 'Alex is building an AI-powered study tool and needs help with backend development. Your ML skills complement their frontend expertise perfectly.',
-      uid2Summary: 'A great match for your project — they have strong backend and ML skills that could accelerate your MVP.',
-      createdAt: DateTime.now().subtract(const Duration(hours: 2)).toIso8601String(),
-    );
-    peerProfiles[mockUid1] = {
-      'uid': mockUid1,
-      'identity': {
-        'full_name': 'Alex Chen',
-        'email': 'alex.chen@example.com',
-        'profile_photo_url': null,
-        'university': 'Stanford University',
-        'graduation_year': 2026,
-        'major': ['Computer Science'],
-        'minor': ['Design'],
-      },
-      'focus_areas': ['startup', 'side_project'],
-      'project': {
-        'one_liner': 'AI-powered study assistant for college students',
-        'stage': 'mvp',
-        'industry': ['EdTech', 'AI/ML'],
-      },
-      'skills': {
-        'possessed': [
-          {'name': 'React', 'source': 'resume'},
-          {'name': 'TypeScript', 'source': 'resume'},
-          {'name': 'Figma', 'source': 'questionnaire'},
-          {'name': 'UI/UX Design', 'source': 'questionnaire'},
-        ],
-        'needed': [
-          {'name': 'Python', 'priority': 'must_have'},
-          {'name': 'Machine Learning', 'priority': 'must_have'},
-          {'name': 'Backend Development', 'priority': 'nice_to_have'},
-        ],
-      },
-    };
-    nearbyUids.add(mockUid1);
-
-    // ── Request mock 1: anonymous pending (other user accepted, we haven't) ──
-    const mockUid2 = 'mock_user_pending_001';
-    final connId2 = _makeConnectionId(myUid!, mockUid2);
-    final myIsUid1ForMock2 = myUid!.compareTo(mockUid2) < 0;
-
-    connections[connId2] = ConnectionModel(
-      connectionId: connId2,
-      uid1: myIsUid1ForMock2 ? myUid! : mockUid2,
-      uid2: myIsUid1ForMock2 ? mockUid2 : myUid!,
-      // The other user accepted, but we haven't yet
-      uid1Accepted: !myIsUid1ForMock2,
-      uid2Accepted: myIsUid1ForMock2,
-      matchPercentage: 74,
-      uid1Summary: 'They have deep expertise in mobile development and are looking for a design-minded co-founder for their fintech idea.',
-      uid2Summary: 'Your design skills and startup mindset make you a strong match for their mobile-first fintech project.',
-      createdAt: DateTime.now().subtract(const Duration(hours: 5)).toIso8601String(),
-    );
-    peerProfiles[mockUid2] = {
-      'uid': mockUid2,
-      'focus_areas': ['startup', 'research'],
-      'project': {
-        'one_liner': 'Fintech app for college students',
-        'stage': 'idea',
-        'industry': ['FinTech', 'Mobile'],
-      },
-    };
-
-    // ── Request mock 2: anonymous pending (neither accepted yet) ──
-    const mockUid3 = 'mock_user_pending_002';
-    final connId3 = _makeConnectionId(myUid!, mockUid3);
-    final myIsUid1ForMock3 = myUid!.compareTo(mockUid3) < 0;
-
-    connections[connId3] = ConnectionModel(
-      connectionId: connId3,
-      uid1: myIsUid1ForMock3 ? myUid! : mockUid3,
-      uid2: myIsUid1ForMock3 ? mockUid3 : myUid!,
-      uid1Accepted: false,
-      uid2Accepted: false,
-      matchPercentage: 68,
-      uid1Summary: 'A backend engineer with cloud infrastructure experience, looking to team up on open-source developer tools.',
-      uid2Summary: 'Their cloud and DevOps skills could help you ship and scale your project infrastructure.',
-      createdAt: DateTime.now().subtract(const Duration(hours: 8)).toIso8601String(),
-    );
-    peerProfiles[mockUid3] = {
-      'uid': mockUid3,
-      'focus_areas': ['open_source', 'side_project'],
-      'project': {
-        'one_liner': 'Developer tools for cloud infrastructure',
-        'stage': 'mvp',
-        'industry': ['DevTools', 'Cloud'],
-      },
-    };
-
-    notifyListeners();
   }
 
   /// Called when a peer UID is received via Bluetooth.
@@ -169,6 +60,8 @@ class ConnectionService extends ChangeNotifier {
 
     final connectionId = _makeConnectionId(myUid!, peerUid);
     if (connections.containsKey(connectionId)) {
+      // Re-encounter: notify backend (fire-and-forget)
+      BackendService.notifyReencounter(connectionId);
       loadingPeerUids.remove(peerUid);
       notifyListeners();
       return;
@@ -215,7 +108,6 @@ class ConnectionService extends ChangeNotifier {
         final peerUid = conn.otherUid(myUid!);
         await _ensurePeerProfile(peerUid);
       }
-      _injectMockData();
     }
   }
 

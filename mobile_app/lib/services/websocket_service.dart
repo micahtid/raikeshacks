@@ -16,6 +16,7 @@ class WebSocketService {
   void Function(Map<String, dynamic>)? onMatchFound;
   void Function(Map<String, dynamic>)? onConnectionAccepted;
   void Function(Map<String, dynamic>)? onConnectionComplete;
+  void Function(Map<String, dynamic>)? onReencounter;
 
   void connect(String uid, String baseUrl) {
     _uid = uid;
@@ -69,6 +70,8 @@ class WebSocketService {
         onConnectionAccepted?.call(event);
       case 'connection_complete':
         onConnectionComplete?.call(event);
+      case 'reencounter':
+        onReencounter?.call(event);
     }
   }
 

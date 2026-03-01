@@ -10,6 +10,7 @@ class ConnectionModel {
   final String? notificationMessage;
   final String createdAt;
   final String? updatedAt;
+  final String? lastNearbyNotifiedAt;
 
   ConnectionModel({
     required this.connectionId,
@@ -23,6 +24,7 @@ class ConnectionModel {
     this.notificationMessage,
     required this.createdAt,
     this.updatedAt,
+    this.lastNearbyNotifiedAt,
   });
 
   factory ConnectionModel.fromJson(Map<String, dynamic> json) {
@@ -38,6 +40,7 @@ class ConnectionModel {
       notificationMessage: json['notification_message'] as String?,
       createdAt: json['created_at'] as String,
       updatedAt: json['updated_at'] as String?,
+      lastNearbyNotifiedAt: json['last_nearby_notified_at'] as String?,
     );
   }
 

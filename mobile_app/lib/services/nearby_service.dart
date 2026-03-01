@@ -176,9 +176,6 @@ class NearbyService extends ChangeNotifier {
       endpointId: endpointId,
       name: name,
     );
-    if (name != displayName) {
-      _notificationService?.showNearbyNotification(name);
-    }
     notifyListeners();
 
     // Auto-connect: the device whose name sorts first initiates.

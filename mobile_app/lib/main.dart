@@ -150,6 +150,7 @@ class _AuthGateState extends State<AuthGate> {
       _webSocketService.onMatchFound = (_) => _connectionService.refreshConnections();
       _webSocketService.onConnectionAccepted = (_) => _connectionService.refreshConnections();
       _webSocketService.onConnectionComplete = (_) => _connectionService.refreshConnections();
+      _webSocketService.onReencounter = (_) => _connectionService.refreshConnections();
       _webSocketService.connect(_connectionService.myUid!, baseUrl);
 
       // Initialize FCM

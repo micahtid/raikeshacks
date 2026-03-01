@@ -1,5 +1,5 @@
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from dotenv import load_dotenv
@@ -51,6 +51,7 @@ from models.connection import (
     upsert_connection,
     accept_connection,
     update_connection_summaries,
+    update_nearby_notified_at,
 )
 from services.resume_parser import parse_resume, ParsedResume
 from services.similarity import find_matches, Weights, vectorize_profile, compute_match
@@ -289,6 +290,7 @@ async def create_connection(body: ConnectionCreate):
         "notification_message": None,
         "created_at": now.isoformat(),
         "updated_at": None,
+        "last_nearby_notified_at": None,
     }
 
     # Race-condition safe insert
@@ -382,6 +384,47 @@ async def accept_connection_endpoint(connection_id: str, body: ConnectionAccept)
             "A match accepted your connection. Check it out!",
             {"connection_id": connection_id},
         )
+
+    return conn
+
+
+@app.post("/connections/{connection_id}/nearby", response_model=Connection)
+async def notify_nearby(connection_id: str):
+    """Notify both users that a matched peer is nearby (re-encounter)."""
+    conn = await get_connection(connection_id)
+    if conn is None:
+        raise HTTPException(status_code=404, detail="Connection not found")
+
+    # Only notify for matches above threshold
+    if conn.match_percentage < 60:
+        return conn
+
+    # Cooldown: skip if notified within the last hour
+    if conn.last_nearby_notified_at is not None:
+        last = conn.last_nearby_notified_at
+        if isinstance(last, str):
+            last = datetime.fromisoformat(last)
+        if datetime.now(timezone.utc) - last < timedelta(hours=1):
+            return conn
+
+    # Update timestamp
+    await update_nearby_notified_at(connection_id)
+
+    # Send FCM to both users
+    for uid in [conn.uid1, conn.uid2]:
+        await send_push_notification(
+            uid,
+            "A match is nearby!",
+            "Someone you matched with is around you right now. Say hi!",
+            {"connection_id": connection_id},
+        )
+
+    # Broadcast WebSocket event
+    event = {
+        "type": "reencounter",
+        "connection": conn.model_dump(mode="json"),
+    }
+    await ws_manager.broadcast_to_users([conn.uid1, conn.uid2], event)
 
     return conn
 

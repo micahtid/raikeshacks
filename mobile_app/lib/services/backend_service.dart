@@ -218,6 +218,19 @@ class BackendService {
     return null;
   }
 
+  /// Notify the backend that a matched peer is nearby (re-encounter).
+  /// Fire-and-forget — returns true on success.
+  static Future<bool> notifyReencounter(String connectionId) async {
+    final uri = Uri.parse('$_baseUrl/connections/$connectionId/nearby');
+    try {
+      final response = await http.post(uri);
+      return response.statusCode >= 200 && response.statusCode < 300;
+    } catch (e) {
+      debugPrint('[knkt] notifyReencounter failed: $e');
+      return false;
+    }
+  }
+
   // ── Chat ──────────────────────────────────────────────────────────────
 
   /// Get chat messages for a room.

@@ -32,6 +32,7 @@ class Connection(BaseModel):
     notification_message: Optional[str] = None
     created_at: datetime
     updated_at: Optional[datetime] = None
+    last_nearby_notified_at: Optional[datetime] = None
 
 
 class ConnectionCreate(BaseModel):
@@ -126,6 +127,16 @@ async def accept_connection(connection_id: str, uid: str) -> Optional[Connection
         return None
     result.pop("_id", None)
     return Connection(**result)
+
+
+async def update_nearby_notified_at(connection_id: str) -> None:
+    """Set last_nearby_notified_at to now."""
+    db = get_db()
+    now = datetime.now(timezone.utc).isoformat()
+    await db.connections.update_one(
+        {"connection_id": connection_id},
+        {"$set": {"last_nearby_notified_at": now}},
+    )
 
 
 async def update_connection_summaries(

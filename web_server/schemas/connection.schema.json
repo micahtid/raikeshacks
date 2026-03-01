@@ -12,6 +12,7 @@
     "uid2_summary": { "type": ["string", "null"] },
     "notification_message": { "type": ["string", "null"] },
     "created_at": { "type": "string" },
-    "updated_at": { "type": ["string", "null"] }
+    "updated_at": { "type": ["string", "null"] },
+    "last_nearby_notified_at": { "type": ["string", "null"] }
   }
 }
