@@ -110,7 +110,7 @@ class _AuthGateState extends State<AuthGate> {
     await _connectionService.initialize();
 
     // Connect WebSocket for real-time events
-    final baseUrl = dotenv.env['BACKEND_URL'] ?? 'https://raikeshacks-teal.vercel.app';
+    final baseUrl = dotenv.env['BACKEND_URL'] ?? 'https://raikeshacks-production.up.railway.app';
     if (_connectionService.myUid != null) {
       _webSocketService.onMatchFound = (_) => _connectionService.refreshConnections();
       _webSocketService.onConnectionAccepted = (_) => _connectionService.refreshConnections();

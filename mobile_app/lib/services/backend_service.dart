@@ -9,7 +9,7 @@ import '../models/connection_model.dart';
 
 class BackendService {
   static String get _baseUrl =>
-      dotenv.env['BACKEND_URL'] ?? 'https://raikeshacks-teal.vercel.app';
+      dotenv.env['BACKEND_URL'] ?? 'https://raikeshacks-production.up.railway.app';
 
   // ── Resume ────────────────────────────────────────────────────────────
 
