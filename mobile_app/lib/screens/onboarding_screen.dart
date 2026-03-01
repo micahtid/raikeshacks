@@ -1,31 +1,52 @@
+import 'dart:typed_data';
+
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
+import '../services/backend_service.dart';
 import '../theme.dart';
 
 class OnboardingScreen extends StatefulWidget {
   final VoidCallback onComplete;
   final VoidCallback onSignOut;
+  final String fullName;
+  final String email;
+  final String? photoUrl;
 
   const OnboardingScreen({
     super.key,
     required this.onComplete,
     required this.onSignOut,
+    required this.fullName,
+    required this.email,
+    this.photoUrl,
   });
 
   @override
   State<OnboardingScreen> createState() => _OnboardingScreenState();
 }
 
-enum _Step { resume, focus, project, skills }
+enum _Step { resume, identity, focus, project, skills }
 
 class _OnboardingScreenState extends State<OnboardingScreen> {
   int _currentStep = 0;
 
   // Resume
   String? _resumeFileName;
+  Uint8List? _resumeBytes;
+  bool _isParsing = false;
+  bool _resumeProcessed = false;
 
-  // Screen 1 — Focus
+  // Identity
+  final _universityController = TextEditingController();
+  final _gradYearController = TextEditingController();
+  final List<String> _majors = [];
+  final List<String> _minors = [];
+  final _majorController = TextEditingController();
+  final _minorController = TextEditingController();
+
+  // Focus
   final Set<String> _selectedFocuses = {};
   static const _focusOptions = [
     'Startup',
@@ -42,7 +63,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     'Looking for opportunities': Icons.work_rounded,
   };
 
-  // Screen 2 — Project
+  // Project
   final _projectController = TextEditingController();
   String? _selectedStage;
   final Set<String> _selectedDomains = {};
@@ -67,17 +88,23 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     'Developer Tools',
   ];
 
-  // Screen 3 — Skills
+  // Skills
   final List<String> _mySkills = [];
   final List<String> _seekingSkills = [];
   final _mySkillsController = TextEditingController();
   final _seekingSkillsController = TextEditingController();
+
+  // Track which skills came from resume vs questionnaire
+  final Set<String> _resumeSkills = {};
+
+  bool _isSubmitting = false;
 
   bool get _skipProject =>
       _selectedFocuses.contains('Looking for opportunities');
 
   List<_Step> get _steps => [
         _Step.resume,
+        _Step.identity,
         _Step.focus,
         if (!_skipProject) _Step.project,
         _Step.skills,
@@ -85,6 +112,10 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
   @override
   void dispose() {
+    _universityController.dispose();
+    _gradYearController.dispose();
+    _majorController.dispose();
+    _minorController.dispose();
     _projectController.dispose();
     _domainController.dispose();
     _mySkillsController.dispose();
@@ -97,7 +128,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     if (_currentStep < steps.length - 1) {
       setState(() => _currentStep++);
     } else {
-      widget.onComplete();
+      _submitAndFinish();
     }
   }
 
@@ -108,12 +139,96 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   }
 
   Future<void> _pickResume() async {
+    if (_resumeProcessed) return;
+
     final result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
       allowedExtensions: ['pdf', 'doc', 'docx'],
+      withData: true,
     );
     if (result != null && result.files.isNotEmpty) {
-      setState(() => _resumeFileName = result.files.first.name);
+      final file = result.files.first;
+      setState(() {
+        _resumeFileName = file.name;
+        _resumeBytes = file.bytes;
+      });
+      _parseResume();
+    }
+  }
+
+  Future<void> _parseResume() async {
+    if (_resumeBytes == null || _resumeFileName == null) return;
+
+    setState(() => _isParsing = true);
+
+    try {
+      final parsed = await BackendService.parseResume(
+        _resumeBytes!,
+        _resumeFileName!,
+      );
+
+      if (parsed != null && mounted) {
+        setState(() {
+          // Prefill identity fields
+          if (parsed['university'] != null) {
+            _universityController.text = parsed['university'] as String;
+          }
+          if (parsed['graduation_year'] != null) {
+            _gradYearController.text = parsed['graduation_year'].toString();
+          }
+          if (parsed['major'] != null) {
+            for (final m in (parsed['major'] as List)) {
+              final s = m.toString();
+              if (s.isNotEmpty && !_majors.contains(s)) _majors.add(s);
+            }
+          }
+          if (parsed['minor'] != null) {
+            for (final m in (parsed['minor'] as List)) {
+              final s = m.toString();
+              if (s.isNotEmpty && !_minors.contains(s)) _minors.add(s);
+            }
+          }
+
+          // Prefill skills
+          if (parsed['skills'] != null) {
+            for (final s in (parsed['skills'] as List)) {
+              final skill = s.toString();
+              if (skill.isNotEmpty && !_mySkills.contains(skill)) {
+                _mySkills.add(skill);
+                _resumeSkills.add(skill);
+              }
+            }
+          }
+
+          // Prefill domains
+          if (parsed['industry'] != null) {
+            for (final d in (parsed['industry'] as List)) {
+              final domain = d.toString();
+              if (domain.isNotEmpty) _selectedDomains.add(domain);
+            }
+          }
+
+          // Prefill project one-liner
+          if (parsed['project_one_liner'] != null) {
+            _projectController.text = parsed['project_one_liner'] as String;
+          }
+
+          _resumeProcessed = true;
+          _isParsing = false;
+        });
+
+        // Auto-advance to identity step
+        if (_currentStep == 0) {
+          setState(() => _currentStep = 1);
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isParsing = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Resume parsing failed: $e')),
+        );
+      }
     }
   }
 
@@ -133,12 +248,100 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     controller.clear();
   }
 
+  void _addTag(TextEditingController controller, List<String> list) {
+    final trimmed = controller.text.trim();
+    if (trimmed.isNotEmpty && !list.contains(trimmed)) {
+      setState(() => list.add(trimmed));
+    }
+    controller.clear();
+  }
+
+  static const _focusToEnum = <String, String>{
+    'Startup': 'startup',
+    'Research': 'research',
+    'Side Project': 'side_project',
+    'Open Source': 'open_source',
+    'Looking for opportunities': 'looking',
+  };
+
+  static const _stageToEnum = <String, String>{
+    'Idea': 'idea',
+    'MVP': 'mvp',
+    'Launched': 'launched',
+    'Scaling': 'scaling',
+  };
+
+  Future<void> _submitAndFinish() async {
+    setState(() => _isSubmitting = true);
+
+    final data = {
+      'identity': {
+        'full_name': widget.fullName,
+        'email': widget.email,
+        'profile_photo_url': widget.photoUrl,
+        'university': _universityController.text.trim().isNotEmpty
+            ? _universityController.text.trim()
+            : 'Unknown',
+        'graduation_year': int.tryParse(_gradYearController.text.trim()) ?? 2025,
+        'major': _majors.isNotEmpty ? _majors : ['Undeclared'],
+        'minor': _minors,
+      },
+      'focus_areas': _selectedFocuses
+          .map((f) => _focusToEnum[f] ?? f.toLowerCase())
+          .toList(),
+      'project': {
+        'one_liner': _projectController.text.trim().isNotEmpty
+            ? _projectController.text.trim()
+            : null,
+        'stage': _selectedStage != null
+            ? _stageToEnum[_selectedStage!]
+            : null,
+        'industry': _selectedDomains.toList(),
+      },
+      'skills': {
+        'possessed': _mySkills
+            .map((s) => {
+                  'name': s,
+                  'source': _resumeSkills.contains(s) ? 'resume' : 'questionnaire',
+                })
+            .toList(),
+        'needed': _seekingSkills
+            .map((s) => {
+                  'name': s,
+                  'priority': 'must_have',
+                })
+            .toList(),
+      },
+    };
+
+    try {
+      final result = await BackendService.createStudent(data);
+      if (result != null && result['uid'] != null) {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('student_uid', result['uid'] as String);
+      }
+      if (mounted) {
+        widget.onComplete();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to create profile: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isSubmitting = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final steps = _steps;
     final safeStep = _currentStep.clamp(0, steps.length - 1);
     final step = steps[safeStep];
     final theme = Theme.of(context);
+    final isLastStep = safeStep == steps.length - 1;
+    final canProceed = !_isParsing && !_isSubmitting;
 
     return Scaffold(
       body: SafeArea(
@@ -209,10 +412,17 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 AppSpacing.screenPadding,
               ),
               child: FilledButton(
-                onPressed: _next,
-                child: Text(
-                  safeStep == steps.length - 1 ? 'Finish' : 'Next',
-                ),
+                onPressed: canProceed ? _next : null,
+                child: _isSubmitting
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : Text(isLastStep ? 'Finish' : 'Next'),
               ),
             ),
           ],
@@ -224,6 +434,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   Widget _buildStep(_Step step, ThemeData theme) {
     return switch (step) {
       _Step.resume => _buildResumeStep(theme),
+      _Step.identity => _buildIdentityStep(theme),
       _Step.focus => _buildFocusStep(theme),
       _Step.project => _buildProjectStep(theme),
       _Step.skills => _buildSkillsStep(theme),
@@ -234,23 +445,24 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
   Widget _buildResumeStep(ThemeData theme) {
     final hasFile = _resumeFileName != null;
+    final disabled = _resumeProcessed;
     return SingleChildScrollView(
       padding: const EdgeInsets.symmetric(horizontal: AppSpacing.screenPadding),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Drop your resume\nhere',
+            'Upload your resume',
             style: theme.textTheme.headlineSmall,
           ),
           const SizedBox(height: AppSpacing.sectionGapSmall),
           Text(
-            'No pressure — just helps us get to know you faster.',
+            "We'll use it to prefill your profile — you can always skip this.",
             style: theme.textTheme.bodyMedium,
           ),
           const SizedBox(height: AppSpacing.sectionGapLarge),
           GestureDetector(
-            onTap: _pickResume,
+            onTap: disabled ? null : _pickResume,
             child: CustomPaint(
               painter: _DashedBorderPainter(
                 color: hasFile ? AppColors.primary : AppColors.border,
@@ -263,34 +475,62 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 width: double.infinity,
                 padding: const EdgeInsets.symmetric(vertical: 48),
                 decoration: BoxDecoration(
-                  color: hasFile ? AppColors.surfaceLightBlue : AppColors.surfaceGray,
+                  color: disabled
+                      ? AppColors.surfaceGray.withValues(alpha: 0.5)
+                      : hasFile
+                          ? AppColors.surfaceLightBlue
+                          : AppColors.surfaceGray,
                   borderRadius: BorderRadius.circular(16),
                 ),
-                child: Column(
-                  children: [
-                    Icon(
-                      hasFile ? Icons.description_rounded : Icons.upload_file_rounded,
-                      size: 48,
-                      color: hasFile ? AppColors.primary : AppColors.textTertiary,
-                    ),
-                    const SizedBox(height: 16),
-                    Text(
-                      hasFile ? _resumeFileName! : 'Tap to upload your resume',
-                      style: theme.textTheme.titleSmall?.copyWith(
-                        color: hasFile ? AppColors.primary : AppColors.textSecondary,
+                child: _isParsing
+                    ? const Column(
+                        children: [
+                          SizedBox(
+                            width: 48,
+                            height: 48,
+                            child: CircularProgressIndicator(strokeWidth: 3),
+                          ),
+                          SizedBox(height: 16),
+                          Text('Parsing your resume...'),
+                        ],
+                      )
+                    : Column(
+                        children: [
+                          Icon(
+                            hasFile
+                                ? Icons.description_rounded
+                                : Icons.upload_file_rounded,
+                            size: 48,
+                            color: hasFile
+                                ? AppColors.primary
+                                : AppColors.textTertiary,
+                          ),
+                          const SizedBox(height: 16),
+                          Text(
+                            hasFile
+                                ? _resumeFileName!
+                                : 'Tap to upload your resume',
+                            style: theme.textTheme.titleSmall?.copyWith(
+                              color: hasFile
+                                  ? AppColors.primary
+                                  : AppColors.textSecondary,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            disabled
+                                ? 'Resume processed'
+                                : hasFile
+                                    ? 'Tap to change file'
+                                    : 'PDF, DOC, or DOCX',
+                            style: theme.textTheme.bodySmall,
+                          ),
+                        ],
                       ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      hasFile ? 'Tap to change file' : 'PDF, DOC, or DOCX',
-                      style: theme.textTheme.bodySmall,
-                    ),
-                  ],
-                ),
               ),
             ),
           ),
-          if (hasFile) ...[
+          if (hasFile && !_isParsing && !disabled) ...[
             const SizedBox(height: 16),
             Row(
               children: [
@@ -306,19 +546,87 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                   ),
                 ),
                 GestureDetector(
-                  onTap: () => setState(() => _resumeFileName = null),
+                  onTap: () => setState(() {
+                    _resumeFileName = null;
+                    _resumeBytes = null;
+                  }),
                   child: const Icon(Icons.close, size: 20, color: AppColors.textTertiary),
                 ),
               ],
             ),
           ],
           const SizedBox(height: AppSpacing.sectionGapSmall),
-          Center(
-            child: TextButton(
-              onPressed: _next,
-              child: const Text('Skip for now'),
+          if (!_isParsing)
+            Center(
+              child: TextButton(
+                onPressed: _next,
+                child: const Text('Skip for now'),
+              ),
             ),
+        ],
+      ),
+    );
+  }
+
+  // ── Identity ────────────────────────────────────────────────────────
+
+  Widget _buildIdentityStep(ThemeData theme) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.screenPadding),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Tell us about yourself',
+            style: theme.textTheme.headlineSmall,
           ),
+          const SizedBox(height: AppSpacing.sectionGapSmall),
+          Text(
+            'Where are you in your academic journey?',
+            style: theme.textTheme.bodyMedium,
+          ),
+          const SizedBox(height: AppSpacing.sectionGapMedium),
+          Text('University', style: theme.textTheme.titleSmall),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _universityController,
+            decoration: const InputDecoration(
+              hintText: 'e.g. University of Nebraska-Lincoln',
+            ),
+            textInputAction: TextInputAction.next,
+          ),
+          const SizedBox(height: AppSpacing.sectionGapMedium),
+          Text('Graduation Year', style: theme.textTheme.titleSmall),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _gradYearController,
+            decoration: const InputDecoration(
+              hintText: 'e.g. 2026',
+            ),
+            keyboardType: TextInputType.number,
+            textInputAction: TextInputAction.next,
+          ),
+          const SizedBox(height: AppSpacing.sectionGapMedium),
+          Text('Major(s)', style: theme.textTheme.titleSmall),
+          const SizedBox(height: 8),
+          _buildTagInput(
+            controller: _majorController,
+            tags: _majors,
+            hint: 'e.g. Computer Science',
+            onAdd: () => _addTag(_majorController, _majors),
+            onRemove: (tag) => setState(() => _majors.remove(tag)),
+          ),
+          const SizedBox(height: AppSpacing.sectionGapMedium),
+          Text('Minor(s)', style: theme.textTheme.titleSmall),
+          const SizedBox(height: 8),
+          _buildTagInput(
+            controller: _minorController,
+            tags: _minors,
+            hint: 'e.g. Mathematics',
+            onAdd: () => _addTag(_minorController, _minors),
+            onRemove: (tag) => setState(() => _minors.remove(tag)),
+          ),
+          const SizedBox(height: AppSpacing.screenPadding),
         ],
       ),
     );
@@ -333,7 +641,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            "What's keeping\nyou busy?",
+            "What are you\nworking on?",
             style: theme.textTheme.headlineSmall,
           ),
           const SizedBox(height: AppSpacing.sectionGapSmall),
@@ -381,7 +689,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           ),
           const SizedBox(height: AppSpacing.sectionGapMedium),
           // One-liner
-          Text('Sum it up in a sentence', style: theme.textTheme.titleSmall),
+          Text('Describe it in one line', style: theme.textTheme.titleSmall),
           const SizedBox(height: 8),
           TextField(
             controller: _projectController,
@@ -392,7 +700,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           ),
           const SizedBox(height: AppSpacing.sectionGapMedium),
           // Stage
-          Text('Where are things at?', style: theme.textTheme.titleSmall),
+          Text('What stage is your project?', style: theme.textTheme.titleSmall),
           const SizedBox(height: 12),
           ..._stageOptions.map((stage) {
             final selected = _selectedStage == stage;
@@ -410,7 +718,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           }),
           const SizedBox(height: AppSpacing.sectionGapSmall),
           // Domain / industry
-          Text('What space are you in?', style: theme.textTheme.titleSmall),
+          Text('What industry are you in?', style: theme.textTheme.titleSmall),
           const SizedBox(height: 12),
           Wrap(
             spacing: 8,
@@ -485,10 +793,10 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text("Almost there!", style: theme.textTheme.headlineSmall),
+          Text("Last step — your skills", style: theme.textTheme.headlineSmall),
           const SizedBox(height: AppSpacing.sectionGapMedium),
           Text(
-            "What are you great at?",
+            "What skills do you have?",
             style: theme.textTheme.titleSmall,
           ),
           const SizedBox(height: 12),
@@ -497,11 +805,14 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             tags: _mySkills,
             hint: 'e.g. Machine Learning, UI Design...',
             onAdd: () => _addSkill(_mySkillsController, _mySkills),
-            onRemove: (tag) => setState(() => _mySkills.remove(tag)),
+            onRemove: (tag) => setState(() {
+              _mySkills.remove(tag);
+              _resumeSkills.remove(tag);
+            }),
           ),
           const SizedBox(height: AppSpacing.sectionGapMedium),
           Text(
-            "What would your dream\ncollaborator bring?",
+            "What skills are you\nlooking for?",
             style: theme.textTheme.titleSmall,
           ),
           const SizedBox(height: 12),

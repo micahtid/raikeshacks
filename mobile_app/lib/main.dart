@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'screens/dashboard_screen.dart';
 import 'screens/onboarding_screen.dart';
@@ -41,6 +42,7 @@ class _AuthGateState extends State<AuthGate> {
   GoogleSignInAccount? _currentUser;
   bool _isLoading = true;
   bool _onboardingComplete = false;
+  String? _storedUid;
 
   @override
   void initState() {
@@ -66,6 +68,12 @@ class _AuthGateState extends State<AuthGate> {
     try {
       await _googleSignIn.signInSilently();
     } catch (_) {}
+    // Check if user already completed onboarding
+    final prefs = await SharedPreferences.getInstance();
+    _storedUid = prefs.getString('student_uid');
+    if (_storedUid != null && _storedUid!.isNotEmpty) {
+      _onboardingComplete = true;
+    }
     if (mounted) {
       setState(() {
         _isLoading = false;
@@ -155,11 +163,13 @@ class _AuthGateState extends State<AuthGate> {
       );
     }
 
-    // Show onboarding every time the user logs in (dev mode)
     if (!_onboardingComplete) {
       return OnboardingScreen(
         onComplete: () => setState(() => _onboardingComplete = true),
         onSignOut: _handleSignOut,
+        fullName: _currentUser!.displayName ?? '',
+        email: _currentUser!.email,
+        photoUrl: _currentUser!.photoUrl,
       );
     }
 

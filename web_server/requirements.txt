@@ -5,3 +5,7 @@ motor
 pydantic[email]
 python-dotenv
 sentence-transformers
+httpx
+python-docx
+PyPDF2
+python-multipart
