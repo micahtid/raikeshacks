@@ -12,6 +12,28 @@ db: AsyncIOMotorDatabase | None = None
 
 SCHEMA_DIR = Path(__file__).parent / "schemas"
 
+def _load_validator(schema_file: str) -> dict:
+    """Load a MongoDB-native JSON Schema file."""
+    with open(SCHEMA_DIR / schema_file) as f:
+        return json.load(f)
+
+
+async def _ensure_collection(
+    db: AsyncIOMotorDatabase,
+    name: str,
+    schema_file: str,
+    existing: list[str],
+) -> None:
+    """Create a collection with $jsonSchema validation, or update the validator."""
+    validator = _load_validator(schema_file)
+    if name not in existing:
+        await db.create_collection(
+            name,
+            validator={"$jsonSchema": validator},
+        )
+    else:
+        await db.command("collMod", name, validator={"$jsonSchema": validator})
+
 
 async def connect_db() -> AsyncIOMotorDatabase:
     global client, db
@@ -19,47 +41,11 @@ async def connect_db() -> AsyncIOMotorDatabase:
     client = AsyncIOMotorClient(mongo_url)
     db = client.users
 
-    # Apply JSON Schema validation to the student_profiles collection
-    schema_path = SCHEMA_DIR / "student_profile.schema.json"
-    with open(schema_path) as f:
-        raw = json.load(f)
-
-    # MongoDB uses only the core JSON Schema fields, strip the meta keys
-    validator = {
-        k: v
-        for k, v in raw.items()
-        if k not in ("$schema", "$id", "title", "description")
-    }
-
-    # MongoDB $jsonSchema doesn't support several standard JSON Schema
-    # keywords.  Strip them recursively so startup never fails.
-    _UNSUPPORTED_KEYS = {"format", "examples", "$comment"}
-
-    def _mongo_compat(obj):
-        if isinstance(obj, dict):
-            for key in list(obj.keys()):
-                if key in _UNSUPPORTED_KEYS:
-                    obj.pop(key)
-            # MongoDB uses "int" / "long" instead of "integer"
-            if obj.get("type") == "integer":
-                obj["bsonType"] = "int"
-                del obj["type"]
-            for v in obj.values():
-                _mongo_compat(v)
-        elif isinstance(obj, list):
-            for item in obj:
-                _mongo_compat(item)
-
-    _mongo_compat(validator)
-
     existing = await db.list_collection_names()
-    if "student_profiles" not in existing:
-        await db.create_collection(
-            "student_profiles",
-            validator={"$jsonSchema": validator},
-        )
-    else:
-        await db.command("collMod", "student_profiles", validator={"$jsonSchema": validator})
+    await _ensure_collection(db, "student_profiles", "student_profile.schema.json", existing)
+    await _ensure_collection(db, "chat_rooms", "chat_room.schema.json", existing)
+    await _ensure_collection(db, "chat_messages", "chat_message.schema.json", existing)
+    await _ensure_collection(db, "parsed_resumes", "parsed_resume.schema.json", existing)
 
     return db
 

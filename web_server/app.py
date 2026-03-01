@@ -1,5 +1,5 @@
 from contextlib import asynccontextmanager
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 from dotenv import load_dotenv
@@ -8,7 +8,7 @@ from fastapi import FastAPI, File, HTTPException, Query, UploadFile
 
 load_dotenv()
 
-from db import connect_db, close_db
+from db import connect_db, close_db, get_db
 from models.student import (
     StudentCreate,
     StudentProfile,
@@ -54,7 +54,18 @@ app = FastAPI(title="RaikeShacks API", lifespan=lifespan)
 @app.post("/parse-resume", response_model=ParsedResume)
 async def parse_resume_endpoint(file: UploadFile = File(...)):
     data = await file.read()
-    return await parse_resume(data, file.filename or "resume.pdf")
+    result = await parse_resume(data, file.filename or "resume.pdf")
+
+    # Persist the parsed resume so it can be referenced later
+    db = get_db()
+    doc = {
+        "filename": file.filename,
+        "parsed_at": datetime.now(timezone.utc).isoformat(),
+        **result.model_dump(),
+    }
+    await db.parsed_resumes.insert_one(doc)
+
+    return result
 
 
 @app.post("/students", response_model=StudentProfile, status_code=201)

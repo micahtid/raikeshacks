@@ -1,0 +1,15 @@
+{
+  "type": "object",
+  "required": ["room_id", "participants", "created_at"],
+  "properties": {
+    "room_id": { "type": "string" },
+    "participants": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 2,
+      "maxItems": 2
+    },
+    "created_at": { "type": "string" },
+    "updated_at": { "type": ["string", "null"] }
+  }
+}

@@ -1,15 +1,11 @@
 {
-  "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "student_profile.schema.json",
-  "title": "StudentProfile",
-  "description": "Raw student data from onboarding. Written once at signup, updated only when the student edits their profile.",
   "type": "object",
   "required": ["uid", "created_at", "identity", "focus_areas", "skills"],
   "properties": {
 
-    "uid": { "type": "string", "format": "uuid" },
-    "created_at": { "type": "string", "format": "date-time" },
-    "updated_at": { "type": "string", "format": "date-time" },
+    "uid": { "type": "string" },
+    "created_at": { "type": "string" },
+    "updated_at": { "type": "string" },
 
     "identity": {
       "type": "object",
@@ -17,10 +13,10 @@
       "required": ["full_name", "email", "university", "graduation_year", "major"],
       "properties": {
         "full_name":         { "type": "string" },
-        "email":             { "type": "string", "format": "email" },
-        "profile_photo_url": { "type": ["string", "null"], "format": "uri" },
+        "email":             { "type": "string" },
+        "profile_photo_url": { "type": ["string", "null"] },
         "university":        { "type": "string" },
-        "graduation_year":   { "type": "integer" },
+        "graduation_year":   { "bsonType": "int" },
         "major":             { "type": "array", "items": { "type": "string" } },
         "minor":             { "type": "array", "items": { "type": "string" } }
       }
@@ -50,18 +46,18 @@
       "description": "Pipeline-managed reference to this student's vector embeddings.",
       "properties": {
         "possessed_vector": {
-          "oneOf": [
+          "anyOf": [
             { "type": "array", "items": { "type": "number" } },
             { "type": "array", "items": { "type": "string" } }
           ]
         },
         "needed_vector": {
-          "oneOf": [
+          "anyOf": [
             { "type": "array", "items": { "type": "number" } },
             { "type": "array", "items": { "type": "string" } }
           ]
         },
-        "last_indexed_at":  { "type": ["string", "null"], "format": "date-time" }
+        "last_indexed_at": { "type": ["string", "null"] }
       }
     },
 

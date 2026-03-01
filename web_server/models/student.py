@@ -144,34 +144,41 @@ async def get_student(uid: str) -> Optional[StudentProfile]:
 async def update_student(uid: str, data: StudentUpdate) -> Optional[StudentProfile]:
     """Update fields on an existing student and re-generate embeddings."""
     from services.similarity import generate_profile_embeddings
-    
+
     db = get_db()
-    
-    current_doc = await db.student_profiles.find_one({"uid": uid}, {"_id": 0})
-    if current_doc is None:
-        return None
 
     changes = data.model_dump(exclude_none=True)
     if not changes:
-        return StudentProfile(**current_doc)
-    
-    current_doc.update(changes)
-    current_doc["updated_at"] = datetime.now(timezone.utc).isoformat()
-    
-    # Re-generate embeddings if relevant fields changed
-    if "skills" in changes or "project" in changes:
-        temp_profile = StudentProfile(**current_doc)
-        current_doc["rag"] = generate_profile_embeddings(temp_profile)
-    
+        doc = await db.student_profiles.find_one({"uid": uid}, {"_id": 0})
+        if doc is None:
+            return None
+        return StudentProfile(**doc)
+
+    changes["updated_at"] = datetime.now(timezone.utc).isoformat()
+
+    # Atomically apply only the changed fields
     result = await db.student_profiles.find_one_and_update(
         {"uid": uid},
-        {"$set": current_doc},
+        {"$set": changes},
         return_document=True,
     )
-    
     if result is None:
         return None
     result.pop("_id", None)
+
+    # Re-generate embeddings if relevant fields changed
+    if "skills" in changes or "project" in changes:
+        profile = StudentProfile(**result)
+        rag = generate_profile_embeddings(profile)
+        result = await db.student_profiles.find_one_and_update(
+            {"uid": uid},
+            {"$set": {"rag": rag}},
+            return_document=True,
+        )
+        if result is None:
+            return None
+        result.pop("_id", None)
+
     return StudentProfile(**result)
 
 
