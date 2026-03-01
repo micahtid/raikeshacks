@@ -46,6 +46,9 @@ async def connect_db() -> AsyncIOMotorDatabase:
     await _ensure_collection(db, "chat_rooms", "chat_room.schema.json", existing)
     await _ensure_collection(db, "chat_messages", "chat_message.schema.json", existing)
     await _ensure_collection(db, "parsed_resumes", "parsed_resume.schema.json", existing)
+    await _ensure_collection(db, "connections", "connection.schema.json", existing)
+
+    await db.connections.create_index("connection_id", unique=True)
 
     return db
 

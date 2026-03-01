@@ -93,6 +93,7 @@ class StudentUpdate(BaseModel):
     focus_areas: Optional[list[FocusArea]] = None
     project: Optional[Project] = None
     skills: Optional[Skills] = None
+    fcm_token: Optional[str] = None
 
 
 class StudentProfile(BaseModel):
@@ -105,6 +106,7 @@ class StudentProfile(BaseModel):
     project: Optional[Project] = None
     rag: Optional[Rag] = None
     skills: Skills
+    fcm_token: Optional[str] = None
 
 
 # ── CRUD ─────────────────────────────────────────────────────────────────

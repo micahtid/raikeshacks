@@ -1,0 +1,17 @@
+{
+  "type": "object",
+  "required": ["connection_id", "uid1", "uid2", "uid1_accepted", "uid2_accepted", "match_percentage", "created_at"],
+  "properties": {
+    "connection_id": { "type": "string" },
+    "uid1": { "type": "string" },
+    "uid2": { "type": "string" },
+    "uid1_accepted": { "type": "boolean" },
+    "uid2_accepted": { "type": "boolean" },
+    "match_percentage": { "type": "number" },
+    "uid1_summary": { "type": ["string", "null"] },
+    "uid2_summary": { "type": ["string", "null"] },
+    "notification_message": { "type": ["string", "null"] },
+    "created_at": { "type": "string" },
+    "updated_at": { "type": ["string", "null"] }
+  }
+}

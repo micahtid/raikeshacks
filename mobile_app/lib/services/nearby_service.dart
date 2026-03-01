@@ -7,23 +7,20 @@ import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:nearby_connections/nearby_connections.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/peer_device.dart';
 import 'notification_service.dart';
-import 'similarity_api_service.dart';
 
 /// UI-side service that drives Nearby Connections **in the main isolate**.
 ///
-/// The `nearby_connections` plugin requires an Activity context, so all calls
-/// must happen here — not in a background-service isolate. The companion
-/// [BackgroundServiceHelper] keeps a foreground notification alive so Android
-/// doesn't kill the process while scanning.
+/// Exchanges UIDs (not secret words) so the connection system can compute
+/// compatibility and generate summaries.
 class NearbyService extends ChangeNotifier {
   static const String _serviceId = 'com.example.mobile_app.nearby';
 
   // ── Public state ──────────────────────────────────────────────────────────
   String displayName = '';
-  String secretWord = '';
   bool isAdvertising = false;
   bool isDiscovering = false;
   String statusMessage = 'Idle';
@@ -31,12 +28,21 @@ class NearbyService extends ChangeNotifier {
   final Map<String, PeerDevice> discoveredPeers = {};
   String? connectedEndpointId;
   String? connectedPeerName;
-  String? receivedSecretWord;
+
+  /// Maps endpointId → uid for discovered peers.
+  final Map<String, String> endpointToUid = {};
 
   // ── Internal ──────────────────────────────────────────────────────────────
   final _nearby = Nearby();
   final _pendingNames = <String, String>{};
   NotificationService? _notificationService;
+
+  /// This user's UID, loaded from SharedPreferences.
+  String? myUid;
+
+  // ── Callbacks for ConnectionService ───────────────────────────────────────
+  void Function(String peerUid)? onPeerUidReceived;
+  void Function(String endpointId)? onPeerLost;
 
   // ── Public API ────────────────────────────────────────────────────────────
 
@@ -46,11 +52,6 @@ class NearbyService extends ChangeNotifier {
 
   void setDisplayName(String name) {
     displayName = name;
-    notifyListeners();
-  }
-
-  void setSecretWord(String word) {
-    secretWord = word;
     notifyListeners();
   }
 
@@ -94,6 +95,12 @@ class NearbyService extends ChangeNotifier {
     if (displayName.trim().isEmpty) {
       _setStatus('Display name not set.');
       return;
+    }
+
+    // Load myUid from SharedPreferences if not set
+    if (myUid == null) {
+      final prefs = await SharedPreferences.getInstance();
+      myUid = prefs.getString('student_uid');
     }
 
     // Stop any previous session first.
@@ -144,8 +151,8 @@ class NearbyService extends ChangeNotifier {
     await _stopNearby();
     connectedEndpointId = null;
     connectedPeerName = null;
-    receivedSecretWord = null;
     discoveredPeers.clear();
+    endpointToUid.clear();
     _pendingNames.clear();
     _setStatus('Idle');
   }
@@ -179,6 +186,8 @@ class NearbyService extends ChangeNotifier {
     debugPrint('[knkt] onEndpointLost: $endpointId');
     if (endpointId != null) {
       discoveredPeers.remove(endpointId);
+      onPeerLost?.call(endpointId);
+      endpointToUid.remove(endpointId);
       notifyListeners();
     }
   }
@@ -201,10 +210,12 @@ class NearbyService extends ChangeNotifier {
       connectedEndpointId = endpointId;
       connectedPeerName = name;
       notifyListeners();
-      _setStatus('Connected to "$name". Exchanging secret…');
-      // Send our secret word to the peer.
-      final bytes = Uint8List.fromList(utf8.encode(secretWord));
-      _nearby.sendBytesPayload(endpointId, bytes);
+      _setStatus('Connected to "$name". Exchanging UID…');
+      // Send our UID to the peer (instead of secret word).
+      if (myUid != null) {
+        final bytes = Uint8List.fromList(utf8.encode(myUid!));
+        _nearby.sendBytesPayload(endpointId, bytes);
+      }
     } else {
       _setStatus('Connection to $endpointId failed (${status.name}).');
     }
@@ -215,28 +226,37 @@ class NearbyService extends ChangeNotifier {
     if (connectedEndpointId == endpointId) {
       connectedEndpointId = null;
       connectedPeerName = null;
-      receivedSecretWord = null;
     }
     _pendingNames.remove(endpointId);
+    onPeerLost?.call(endpointId);
+    endpointToUid.remove(endpointId);
     notifyListeners();
     _setStatus('Disconnected from $endpointId.');
   }
 
   void _onPayloadReceived(String endpointId, Payload payload) {
     if (payload.type != PayloadType.BYTES || payload.bytes == null) return;
-    final word = utf8.decode(payload.bytes!);
+    final peerUid = utf8.decode(payload.bytes!);
+    debugPrint('[knkt] Received UID from $endpointId: $peerUid');
+
     connectedEndpointId ??= endpointId;
     final peer = _pendingNames[endpointId] ?? endpointId;
     connectedPeerName ??= peer;
-    receivedSecretWord = word;
-    notifyListeners();
-    _setStatus('Secret word received from "$peer"!');
 
-    SimilarityApiService.postEncounter(
-      myUserId: displayName,
-      peerUserId: peer,
-      secretWord: word,
-    );
+    // Store endpointId → uid mapping
+    endpointToUid[endpointId] = peerUid;
+
+    // Update peer device with UID
+    final device = discoveredPeers[endpointId];
+    if (device != null) {
+      device.uid = peerUid;
+    }
+
+    notifyListeners();
+    _setStatus('UID received from "$peer"!');
+
+    // Notify ConnectionService
+    onPeerUidReceived?.call(peerUid);
   }
 
   Future<void> _autoConnect(String endpointId) async {

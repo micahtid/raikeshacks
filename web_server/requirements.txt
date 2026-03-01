@@ -9,3 +9,6 @@ httpx
 python-docx
 PyPDF2
 python-multipart
+PyJWT
+cryptography
+websockets
