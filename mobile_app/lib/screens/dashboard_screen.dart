@@ -59,6 +59,7 @@ class DashboardScreen extends StatefulWidget {
 class _DashboardScreenState extends State<DashboardScreen> {
   int _selectedTab = 0;
   bool _isScanning = false;
+  bool _isTogglingBluetooth = false;
   bool _isDeleting = false;
   bool _isClearingData = false;
 
@@ -86,17 +87,29 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Future<void> _startScanning() async {
-    final granted = await _svc.requestPermissions();
-    if (!granted) return;
-    await _svc.startBoth();
-    await BackgroundServiceManager.start();
-    if (mounted) setState(() => _isScanning = true);
+    if (_isTogglingBluetooth) return;
+    setState(() => _isTogglingBluetooth = true);
+    try {
+      final granted = await _svc.requestPermissions();
+      if (!granted) return;
+      await _svc.startBoth();
+      await BackgroundServiceManager.start();
+      if (mounted) setState(() => _isScanning = true);
+    } finally {
+      if (mounted) setState(() => _isTogglingBluetooth = false);
+    }
   }
 
   Future<void> _stopScanning() async {
-    await BackgroundServiceManager.stop();
-    await _svc.stopAll();
-    if (mounted) setState(() => _isScanning = false);
+    if (_isTogglingBluetooth) return;
+    setState(() => _isTogglingBluetooth = true);
+    try {
+      await BackgroundServiceManager.stop();
+      await _svc.stopAll();
+      if (mounted) setState(() => _isScanning = false);
+    } finally {
+      if (mounted) setState(() => _isTogglingBluetooth = false);
+    }
   }
 
   Future<void> _refreshDashboard() async {
@@ -477,6 +490,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             child: _StatusBanner(
               message: _svc.statusMessage,
               isScanning: _isScanning,
+              isToggling: _isTogglingBluetooth,
               onToggle: _isScanning ? _stopScanning : _startScanning,
             ),
           ),
@@ -1328,15 +1342,18 @@ class _NavBarItem extends StatelessWidget {
         height: 68,
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
           children: [
             Icon(
               icon,
               size: 24,
               color: isSelected ? AppColors.primary : AppColors.textTertiary,
             ),
-            const SizedBox(height: 4),
+            const SizedBox(height: 2),
             Text(
               label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
               style: TextStyle(
                 fontSize: 11,
                 fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
@@ -1411,11 +1428,13 @@ class _SkeletonCard extends StatelessWidget {
 class _StatusBanner extends StatelessWidget {
   final String message;
   final bool isScanning;
+  final bool isToggling;
   final VoidCallback onToggle;
 
   const _StatusBanner({
     required this.message,
     required this.isScanning,
+    this.isToggling = false,
     required this.onToggle,
   });
 
@@ -1507,7 +1526,7 @@ class _StatusBanner extends StatelessWidget {
                   ),
                   const SizedBox(width: 12),
                   GestureDetector(
-                    onTap: onToggle,
+                    onTap: isToggling ? null : onToggle,
                     child: Container(
                       width: 42,
                       height: 42,
