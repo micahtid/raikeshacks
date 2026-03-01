@@ -1,4 +1,5 @@
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform, TargetPlatform;
 import 'firebase_options.dart';
 import 'package:flutter/material.dart';
@@ -17,10 +18,18 @@ import 'services/notification_service.dart';
 import 'services/websocket_service.dart';
 import 'theme.dart';
 
+/// Background/terminated handler — the OS already displays the notification
+/// from the FCM `notification` payload, so we only process data here.
+@pragma('vm:entry-point')
+Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  debugPrint('[knkt] FCM background message: ${message.data}');
+}
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await dotenv.load(fileName: ".env");
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
   runApp(const MyApp());
 }
 
@@ -140,7 +149,7 @@ class _AuthGateState extends State<AuthGate> {
       _webSocketService.connect(_connectionService.myUid!, baseUrl);
 
       // Initialize FCM (stub until Firebase project is set up)
-      await _fcmService.initialize(_connectionService.myUid!);
+      await _fcmService.initialize(_connectionService.myUid!, _notificationService);
     }
   }
 

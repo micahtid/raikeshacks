@@ -92,10 +92,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: Text(
-              'Clear',
-              style: TextStyle(color: AppColors.primary),
-            ),
+            child: Text('Clear', style: TextStyle(color: AppColors.primary)),
           ),
         ],
       ),
@@ -111,9 +108,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
       if (uid == null || uid.isEmpty) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('No account found')),
-          );
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text('No account found')));
           setState(() => _isClearingData = false);
         }
         return;
@@ -129,16 +126,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
         }
       } else {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Failed to clear data')),
-          );
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text('Failed to clear data')));
         }
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error: $e')));
       }
     } finally {
       if (mounted) setState(() => _isClearingData = false);
@@ -163,10 +160,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: Text(
-              'Delete',
-              style: TextStyle(color: AppColors.danger),
-            ),
+            child: Text('Delete', style: TextStyle(color: AppColors.danger)),
           ),
         ],
       ),
@@ -203,9 +197,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error: $e')));
       }
     } finally {
       if (mounted) setState(() => _isDeleting = false);
@@ -266,8 +260,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
               child: _selectedTab == 0
                   ? _buildDashboardContent(theme)
                   : _selectedTab == 1
-                      ? _buildChatContent(theme)
-                      : _buildProfileContent(theme),
+                  ? _buildChatContent(theme)
+                  : _buildProfileContent(theme),
             ),
           ),
           // Floating glass nav bar
@@ -299,7 +293,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
       children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(
-            AppSpacing.screenPadding, 20, AppSpacing.screenPadding, 10,
+            AppSpacing.screenPadding,
+            20,
+            AppSpacing.screenPadding,
+            10,
           ),
           child: Row(
             children: [
@@ -311,8 +308,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ),
               const SizedBox(width: 8),
               Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
                 decoration: BoxDecoration(
                   color: AppColors.textPrimary.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(10),
@@ -332,14 +328,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ...connections.map((conn) {
           return Padding(
             padding: const EdgeInsets.fromLTRB(
-              AppSpacing.screenPadding, 0, AppSpacing.screenPadding, 10,
+              AppSpacing.screenPadding,
+              0,
+              AppSpacing.screenPadding,
+              10,
             ),
             child: _ConnectionCard(
               conn: conn,
               peerName: _peerName(conn),
               peerInitials: _peerInitials(conn),
               myUid: _connSvc.myUid ?? '',
-              showAcceptButton: showAcceptButton && !conn.hasAccepted(_connSvc.myUid ?? ''),
+              showAcceptButton:
+                  showAcceptButton && !conn.hasAccepted(_connSvc.myUid ?? ''),
               showChatButton: conn.isComplete,
               onTap: () => _showProfileSheet(conn),
               onAccept: () => _connSvc.acceptConnection(conn.connectionId),
@@ -362,7 +362,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
         // Welcome header
         Padding(
           padding: const EdgeInsets.fromLTRB(
-            AppSpacing.screenPadding, 24, AppSpacing.screenPadding, 0,
+            AppSpacing.screenPadding,
+            24,
+            AppSpacing.screenPadding,
+            0,
           ),
           child: Text(
             'Welcome back, $_firstName',
@@ -503,8 +506,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         ? AppColors.onPrimary
                         : AppColors.textTertiary,
                     shape: RoundedRectangleBorder(
-                      borderRadius:
-                          BorderRadius.circular(AppRadius.button),
+                      borderRadius: BorderRadius.circular(AppRadius.button),
                     ),
                   ),
                   child: Text(
@@ -530,11 +532,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
     return Column(
       key: const ValueKey('chat'),
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(
-            AppSpacing.screenPadding, 24, AppSpacing.screenPadding, 16,
+            AppSpacing.screenPadding,
+            24,
+            AppSpacing.screenPadding,
+            16,
           ),
           child: Text('Messages', style: theme.textTheme.headlineSmall),
         ),
@@ -594,6 +599,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Widget _buildProfileContent(ThemeData theme) {
     return Column(
       key: const ValueKey('profile'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         const Spacer(flex: 2),
         // Profile picture
@@ -640,8 +646,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
         const Spacer(flex: 2),
         // Sign Out button
         Padding(
-          padding:
-              const EdgeInsets.symmetric(horizontal: AppSpacing.screenPadding),
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.screenPadding,
+          ),
           child: FilledButton(
             onPressed: widget.onSignOut,
             style: FilledButton.styleFrom(
@@ -654,8 +661,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
         const SizedBox(height: 12),
         // Fresh Start button
         Padding(
-          padding:
-              const EdgeInsets.symmetric(horizontal: AppSpacing.screenPadding),
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.screenPadding,
+          ),
           child: FilledButton(
             onPressed: _isClearingData ? null : _clearData,
             style: FilledButton.styleFrom(
@@ -677,8 +685,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
         const SizedBox(height: 12),
         // Delete Account button
         Padding(
-          padding:
-              const EdgeInsets.symmetric(horizontal: AppSpacing.screenPadding),
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.screenPadding,
+          ),
           child: FilledButton(
             onPressed: _isDeleting ? null : _deleteAccount,
             style: FilledButton.styleFrom(
@@ -792,7 +801,10 @@ class _ConnectionCard extends StatelessWidget {
               GestureDetector(
                 onTap: onAccept,
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 8,
+                  ),
                   decoration: BoxDecoration(
                     color: AppColors.primary,
                     borderRadius: BorderRadius.circular(8),
@@ -923,10 +935,7 @@ class _GlassNavBar extends StatelessWidget {
   final int selectedIndex;
   final ValueChanged<int> onTap;
 
-  const _GlassNavBar({
-    required this.selectedIndex,
-    required this.onTap,
-  });
+  const _GlassNavBar({required this.selectedIndex, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -946,9 +955,7 @@ class _GlassNavBar extends StatelessWidget {
               ],
             ),
             borderRadius: BorderRadius.circular(20),
-            border: Border.all(
-              color: Colors.white.withValues(alpha: 0.08),
-            ),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
           ),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceAround,
