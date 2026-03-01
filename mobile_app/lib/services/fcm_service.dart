@@ -8,7 +8,10 @@ class FcmService {
   String? _uid;
   final _messaging = FirebaseMessaging.instance;
 
-  Future<void> initialize(String uid, NotificationService notificationService) async {
+  Future<void> initialize(
+    String uid,
+    NotificationService notificationService,
+  ) async {
     _uid = uid;
 
     try {
@@ -31,18 +34,18 @@ class FcmService {
         final connectionId = message.data['connection_id'] as String?;
         final roomId = message.data['room_id'] as String?;
 
-        String title;
-        String body;
-        if (roomId != null) {
-          title = 'Connection complete!';
-          body = "You're connected! Start chatting now.";
-        } else if (connectionId != null) {
-          title = 'New connection request!';
-          body = 'Someone wants to connect with you.';
-        } else {
-          title = message.notification?.title ?? 'knkt';
-          body = message.notification?.body ?? '';
-        }
+        final title =
+            message.notification?.title ??
+            (roomId != null
+                ? 'Connection complete!'
+                : (connectionId != null ? 'New connection request!' : 'knkt'));
+        final body =
+            message.notification?.body ??
+            (roomId != null
+                ? "You're connected! Start chatting now."
+                : (connectionId != null
+                      ? "Someone wants to connect with you."
+                      : ""));
 
         await notificationService.showNotification(
           id: (connectionId ?? message.messageId ?? 'default').hashCode,

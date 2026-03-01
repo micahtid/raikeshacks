@@ -53,8 +53,14 @@ class ConnectionService extends ChangeNotifier {
 
     // Only the alphabetically-first user creates the connection to avoid duplicates
     if (myUid!.compareTo(peerUid) > 0) {
-      loadingPeerUids.remove(peerUid);
-      notifyListeners();
+      // Wait for the other user to create the connection.
+      // A fallback timeout avoids a stuck skeleton if their request fails.
+      Future.delayed(const Duration(seconds: 10), () {
+        if (loadingPeerUids.contains(peerUid)) {
+          loadingPeerUids.remove(peerUid);
+          notifyListeners();
+        }
+      });
       return;
     }
 
@@ -117,6 +123,8 @@ class ConnectionService extends ChangeNotifier {
           peerProfiles.remove(peerUid);
         }
         await _ensurePeerProfile(peerUid);
+
+        loadingPeerUids.remove(peerUid);
       }
       notifyListeners();
     }
@@ -151,7 +159,9 @@ class ConnectionService extends ChangeNotifier {
     if (myUid == null) return [];
     return connections.values.where((c) {
       final otherUid = c.otherUid(myUid!);
-      return c.isAboveThreshold && !c.hasAccepted(myUid!) && c.hasAccepted(otherUid);
+      return c.isAboveThreshold &&
+          !c.hasAccepted(myUid!) &&
+          c.hasAccepted(otherUid);
     }).toList();
   }
 
