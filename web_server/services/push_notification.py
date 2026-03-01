@@ -100,10 +100,25 @@ async def send_push_notification(
 
     try:
         access_token = _get_access_token(sa)
+        # Send notification + data so the OS can display the notification
+        # even when the app is killed. The app handles foreground display
+        # separately via flutter_local_notifications.
         message: dict = {
             "message": {
                 "token": student["fcm_token"],
                 "notification": {"title": title, "body": body},
+                "android": {
+                    "priority": "high",
+                    "notification": {
+                        "channel_id": "nearby_alerts",
+                    },
+                },
+                "apns": {
+                    "headers": {"apns-priority": "10"},
+                    "payload": {
+                        "aps": {"alert": {"title": title, "body": body}, "sound": "default"},
+                    },
+                },
             }
         }
         if data:

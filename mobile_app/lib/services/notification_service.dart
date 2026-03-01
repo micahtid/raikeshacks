@@ -61,4 +61,27 @@ class NotificationService {
     );
     debugPrint('[knkt] notification: $peerName is nearby');
   }
+
+  /// Show a general-purpose notification (used by FCM handlers).
+  Future<void> showNotification({
+    required int id,
+    required String title,
+    required String body,
+  }) async {
+    const androidDetails = AndroidNotificationDetails(
+      _channelId,
+      _channelName,
+      channelDescription: _channelDescription,
+      importance: Importance.high,
+      priority: Priority.high,
+    );
+    const iosDetails = DarwinNotificationDetails();
+    const details = NotificationDetails(
+      android: androidDetails,
+      iOS: iosDetails,
+    );
+
+    await _plugin.show(id, title, body, details);
+    debugPrint('[knkt] notification shown: $title');
+  }
 }
