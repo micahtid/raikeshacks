@@ -304,7 +304,7 @@ class _SignInPageState extends State<_SignInPage>
 
           // Network graph animation (upper area, compact)
           Positioned(
-            top: height * 0.04,
+            top: height * 0.08,
             left: 24,
             right: 24,
             height: height * 0.46,
