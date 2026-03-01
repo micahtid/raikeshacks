@@ -61,6 +61,8 @@
       }
     },
 
+    "fcm_token": { "type": ["string", "null"] },
+
     "skills": {
       "type": "object",
       "description": "Screen 3 — Extracted from resume/portfolio and confirmed via questionnaire.",

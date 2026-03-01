@@ -4,56 +4,12 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import '../models/peer_device.dart';
+import '../models/connection_model.dart';
 import '../services/backend_service.dart';
+import '../services/connection_service.dart';
 import '../services/nearby_service.dart';
 import '../theme.dart';
 import 'chat_screen.dart';
-
-// ── Mock data ────────────────────────────────────────────────────────────────
-
-enum _ConnectionState { incoming, pending, suggested, connected }
-
-class _MockUser {
-  final String id;
-  final String name;
-  final String focus;
-  final String stage;
-  final String bio;
-  final int score; // compatibility score 0-100
-  final _ConnectionState initialState;
-
-  const _MockUser({
-    required this.id,
-    required this.name,
-    required this.focus,
-    required this.stage,
-    required this.bio,
-    required this.score,
-    required this.initialState,
-  });
-}
-
-const _mockUsers = [
-  _MockUser(
-    id: '1',
-    name: 'Alex Rivera',
-    focus: 'Startup',
-    stage: 'MVP',
-    bio: 'Building a fintech platform for freelancers. Looking for co-founders with mobile dev or design chops.',
-    score: 92,
-    initialState: _ConnectionState.incoming,
-  ),
-  _MockUser(
-    id: '2',
-    name: 'Morgan Lee',
-    focus: 'Startup',
-    stage: 'Idea',
-    bio: 'Exploring the intersection of AI and education. Former teacher turned indie hacker.',
-    score: 85,
-    initialState: _ConnectionState.suggested,
-  ),
-];
 
 // ── Dashboard screen ─────────────────────────────────────────────────────────
 
@@ -62,6 +18,7 @@ class DashboardScreen extends StatefulWidget {
   final String displayName;
   final VoidCallback onSignOut;
   final NearbyService nearbyService;
+  final ConnectionService connectionService;
 
   const DashboardScreen({
     super.key,
@@ -69,6 +26,7 @@ class DashboardScreen extends StatefulWidget {
     required this.displayName,
     required this.onSignOut,
     required this.nearbyService,
+    required this.connectionService,
   });
 
   @override
@@ -80,28 +38,26 @@ class _DashboardScreenState extends State<DashboardScreen> {
   bool _isScanning = false;
   bool _isDeleting = false;
 
-  /// Connection state for each mock user, initialized from their defaults.
-  late final Map<String, _ConnectionState> _connectionStates = {
-    for (final u in _mockUsers) u.id: u.initialState,
-  };
-
   NearbyService get _svc => widget.nearbyService;
+  ConnectionService get _connSvc => widget.connectionService;
   String get _firstName => widget.displayName.split(' ').first;
 
   @override
   void initState() {
     super.initState();
-    _svc.addListener(_onNearbyChanged);
+    _svc.addListener(_onChanged);
+    _connSvc.addListener(_onChanged);
     _startScanning();
   }
 
   @override
   void dispose() {
-    _svc.removeListener(_onNearbyChanged);
+    _svc.removeListener(_onChanged);
+    _connSvc.removeListener(_onChanged);
     super.dispose();
   }
 
-  void _onNearbyChanged() {
+  void _onChanged() {
     if (mounted) setState(() {});
   }
 
@@ -184,28 +140,39 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
-  void _acceptMockUser(String id) {
-    setState(() => _connectionStates[id] = _ConnectionState.connected);
+  String _peerName(ConnectionModel conn) {
+    final peerUid = conn.otherUid(_connSvc.myUid ?? '');
+    final profile = _connSvc.peerProfiles[peerUid];
+    if (profile != null) {
+      final identity = profile['identity'] as Map<String, dynamic>?;
+      return identity?['full_name'] as String? ?? 'Unknown';
+    }
+    return 'Unknown';
   }
 
-  void _connectMockUser(String id) {
-    setState(() => _connectionStates[id] = _ConnectionState.pending);
+  String _peerInitials(ConnectionModel conn) {
+    final name = _peerName(conn);
+    final parts = name.trim().split(RegExp(r'\s+'));
+    if (parts.length >= 2) {
+      return '${parts[0][0]}${parts[1][0]}'.toUpperCase();
+    }
+    return name.isNotEmpty ? name[0].toUpperCase() : '?';
   }
 
-  void _pushChatScreen(_MockUser user) {
-    final parts = user.name.trim().split(RegExp(r'\s+'));
-    final initials = parts.length >= 2
-        ? '${parts[0][0]}${parts[1][0]}'.toUpperCase()
-        : user.name.isNotEmpty
-            ? user.name[0].toUpperCase()
-            : '?';
+  String _connectionRoomId(ConnectionModel conn) {
+    final uids = [conn.uid1, conn.uid2]..sort();
+    return '${uids[0]}_${uids[1]}';
+  }
 
+  void _pushChatScreen(ConnectionModel conn) {
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => ChatScreen(
-          peerName: user.name,
-          peerInitials: initials,
+          peerName: _peerName(conn),
+          peerInitials: _peerInitials(conn),
+          roomId: _connectionRoomId(conn),
+          myUid: _connSvc.myUid ?? '',
         ),
       ),
     );
@@ -248,12 +215,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   // ── Dashboard tab ──────────────────────────────────────────────────────
 
-  Widget _buildSection(
+  Widget _buildConnectionSection(
     ThemeData theme,
     String title,
-    List<_MockUser> users,
+    List<ConnectionModel> connections,
+    bool showAcceptButton,
   ) {
-    if (users.isEmpty) return const SizedBox.shrink();
+    if (connections.isEmpty) return const SizedBox.shrink();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -278,7 +246,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Text(
-                  '${users.length}',
+                  '${connections.length}',
                   style: const TextStyle(
                     color: AppColors.textPrimary,
                     fontSize: 11,
@@ -289,17 +257,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
             ],
           ),
         ),
-        ...users.map((user) {
-          final state = _connectionStates[user.id]!;
+        ...connections.map((conn) {
           return Padding(
             padding: const EdgeInsets.fromLTRB(
               AppSpacing.screenPadding, 0, AppSpacing.screenPadding, 10,
             ),
-            child: _MockProfileCard(
-              user: user,
-              state: state,
-              onTap: () => _showProfileSheet(user),
-              onChat: () => _pushChatScreen(user),
+            child: _ConnectionCard(
+              conn: conn,
+              peerName: _peerName(conn),
+              peerInitials: _peerInitials(conn),
+              myUid: _connSvc.myUid ?? '',
+              showAcceptButton: showAcceptButton && !conn.hasAccepted(_connSvc.myUid ?? ''),
+              showChatButton: conn.isComplete,
+              onTap: () => _showProfileSheet(conn),
+              onAccept: () => _connSvc.acceptConnection(conn.connectionId),
+              onChat: () => _pushChatScreen(conn),
             ),
           );
         }),
@@ -308,40 +280,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Widget _buildDashboardContent(ThemeData theme) {
-    // Convert Bluetooth peers to Discover cards
-    final btPeers = _svc.discoveredPeers.values.map((peer) {
-      final btId = 'bt_${peer.endpointId}';
-      _connectionStates.putIfAbsent(btId, () => _ConnectionState.suggested);
-      return _MockUser(
-        id: btId,
-        name: peer.name,
-        focus: 'Startup',
-        stage: 'Idea',
-        bio: 'Discovered nearby via Bluetooth.',
-        score: 75,
-        initialState: _ConnectionState.suggested,
-      );
-    }).toList();
-
-    // Requests: incoming (not yet accepted)
-    final requests = _mockUsers
-        .where((u) => _connectionStates[u.id] == _ConnectionState.incoming)
-        .toList();
-
-    // Connected: mutually accepted (from any original section)
-    final connected = _mockUsers
-        .where((u) => _connectionStates[u.id] == _ConnectionState.connected)
-        .toList();
-
-    // Discover: suggested + pending + Bluetooth peers
-    final discover = [
-      ..._mockUsers.where((u) {
-        final s = _connectionStates[u.id]!;
-        return s == _ConnectionState.suggested ||
-            s == _ConnectionState.pending;
-      }),
-      ...btPeers,
-    ];
+    final connected = _connSvc.connectedNearby;
+    final pending = _connSvc.pendingRequests;
 
     return ListView(
       key: const ValueKey('dashboard'),
@@ -367,9 +307,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
         ),
         // ── Profile card sections ──
-        _buildSection(theme, 'Connected', connected),
-        _buildSection(theme, 'Requests', requests),
-        _buildSection(theme, 'Discover', discover),
+        _buildConnectionSection(theme, 'Connected', connected, false),
+        _buildConnectionSection(theme, 'Requests', pending, true),
         const SizedBox(height: 20),
       ],
     );
@@ -377,52 +316,45 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   // ── Profile bottom sheet ──────────────────────────────────────────────
 
-  void _showProfileSheet(_MockUser user) {
+  void _showProfileSheet(ConnectionModel conn) {
+    final myUid = _connSvc.myUid ?? '';
+    final name = _peerName(conn);
+    final initials = _peerInitials(conn);
+    final summary = conn.summaryFor(myUid);
+    final iAccepted = conn.hasAccepted(myUid);
+    final isComplete = conn.isComplete;
+
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
       builder: (ctx) {
-        final state = _connectionStates[user.id]!;
-        final parts = user.name.trim().split(RegExp(r'\s+'));
-        final initials = parts.length >= 2
-            ? '${parts[0][0]}${parts[1][0]}'.toUpperCase()
-            : user.name.isNotEmpty
-                ? user.name[0].toUpperCase()
-                : '?';
-
         String buttonLabel;
         bool buttonEnabled;
         Color buttonColor;
         VoidCallback? buttonAction;
 
-        switch (state) {
-          case _ConnectionState.incoming:
-            buttonLabel = 'Accept';
-            buttonEnabled = true;
-            buttonColor = AppColors.primary;
-            buttonAction = () {
-              _acceptMockUser(user.id);
-              Navigator.pop(ctx);
-            };
-          case _ConnectionState.pending:
-            buttonLabel = 'Pending';
-            buttonEnabled = false;
-            buttonColor = AppColors.inactive;
-            buttonAction = null;
-          case _ConnectionState.suggested:
-            buttonLabel = 'Connect';
-            buttonEnabled = true;
-            buttonColor = AppColors.primary;
-            buttonAction = () {
-              _connectMockUser(user.id);
-              Navigator.pop(ctx);
-            };
-          case _ConnectionState.connected:
-            buttonLabel = 'Connected';
-            buttonEnabled = false;
-            buttonColor = AppColors.inactive;
-            buttonAction = null;
+        if (isComplete) {
+          buttonLabel = 'Chat';
+          buttonEnabled = true;
+          buttonColor = AppColors.primary;
+          buttonAction = () {
+            Navigator.pop(ctx);
+            _pushChatScreen(conn);
+          };
+        } else if (iAccepted) {
+          buttonLabel = 'Pending';
+          buttonEnabled = false;
+          buttonColor = AppColors.inactive;
+          buttonAction = null;
+        } else {
+          buttonLabel = 'Accept';
+          buttonEnabled = true;
+          buttonColor = AppColors.primary;
+          buttonAction = () {
+            _connSvc.acceptConnection(conn.connectionId);
+            Navigator.pop(ctx);
+          };
         }
 
         return Container(
@@ -457,7 +389,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               const SizedBox(height: 16),
               // Name
               Text(
-                user.name,
+                name,
                 style: GoogleFonts.sora(
                   fontSize: 18,
                   fontWeight: FontWeight.w700,
@@ -465,52 +397,27 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ),
               ),
               const SizedBox(height: 8),
-              // Focus + Stage row
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    _MockProfileCard._focusIcons[user.focus] ??
-                        Icons.work_rounded,
-                    size: 14,
-                    color: AppColors.textTertiary,
-                  ),
-                  const SizedBox(width: 4),
-                  Text(
-                    user.focus,
-                    style: const TextStyle(
-                      fontSize: 13,
-                      color: AppColors.textSecondary,
-                    ),
-                  ),
-                  const SizedBox(width: 14),
-                  Icon(
-                    _MockProfileCard._stageIcons[user.stage] ??
-                        Icons.flag_rounded,
-                    size: 14,
-                    color: AppColors.textTertiary,
-                  ),
-                  const SizedBox(width: 4),
-                  Text(
-                    user.stage,
-                    style: const TextStyle(
-                      fontSize: 13,
-                      color: AppColors.textSecondary,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              // Bio
+              // Match percentage
               Text(
-                user.bio,
-                textAlign: TextAlign.center,
+                '${conn.matchPercentage.toStringAsFixed(0)}% match',
                 style: const TextStyle(
-                  fontSize: 13,
-                  height: 1.5,
-                  color: AppColors.textSecondary,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.primary,
                 ),
               ),
+              const SizedBox(height: 16),
+              // Summary (from Gemini)
+              if (summary != null && summary.isNotEmpty)
+                Text(
+                  summary,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    height: 1.5,
+                    color: AppColors.textSecondary,
+                  ),
+                ),
               const SizedBox(height: 24),
               // Action button
               SizedBox(
@@ -547,9 +454,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   // ── Chat tab ─────────────────────────────────────────────────────────
 
   Widget _buildChatContent(ThemeData theme) {
-    final connectedUsers = _mockUsers
-        .where((u) => _connectionStates[u.id] == _ConnectionState.connected)
-        .toList();
+    final acceptedConnections = _connSvc.allAccepted;
 
     return Column(
       key: const ValueKey('chat'),
@@ -562,7 +467,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           child: Text('Messages', style: theme.textTheme.headlineSmall),
         ),
         Expanded(
-          child: connectedUsers.isEmpty
+          child: acceptedConnections.isEmpty
               ? Center(
                   child: Padding(
                     padding: const EdgeInsets.only(bottom: 80),
@@ -592,16 +497,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 )
               : ListView.separated(
                   padding: const EdgeInsets.fromLTRB(0, 0, 0, 100),
-                  itemCount: connectedUsers.length,
+                  itemCount: acceptedConnections.length,
                   separatorBuilder: (context, index) => const Divider(
                     height: 0.5,
                     indent: AppSpacing.screenPadding + 56,
                   ),
                   itemBuilder: (context, index) {
-                    final user = connectedUsers[index];
+                    final conn = acceptedConnections[index];
                     return _ChatListTile(
-                      user: user,
-                      onTap: () => _pushChatScreen(user),
+                      name: _peerName(conn),
+                      initials: _peerInitials(conn),
+                      summary: conn.summaryFor(_connSvc.myUid ?? ''),
+                      onTap: () => _pushChatScreen(conn),
                     );
                   },
                 ),
@@ -701,42 +608,30 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 }
 
-// ── Mock profile card ────────────────────────────────────────────────────────
+// ── Connection card ──────────────────────────────────────────────────────────
 
-class _MockProfileCard extends StatelessWidget {
-  final _MockUser user;
-  final _ConnectionState state;
+class _ConnectionCard extends StatelessWidget {
+  final ConnectionModel conn;
+  final String peerName;
+  final String peerInitials;
+  final String myUid;
+  final bool showAcceptButton;
+  final bool showChatButton;
   final VoidCallback onTap;
+  final VoidCallback onAccept;
   final VoidCallback? onChat;
 
-  const _MockProfileCard({
-    required this.user,
-    required this.state,
+  const _ConnectionCard({
+    required this.conn,
+    required this.peerName,
+    required this.peerInitials,
+    required this.myUid,
+    required this.showAcceptButton,
+    required this.showChatButton,
     required this.onTap,
+    required this.onAccept,
     this.onChat,
   });
-
-  String get _initials {
-    final parts = user.name.trim().split(RegExp(r'\s+'));
-    if (parts.length >= 2) {
-      return '${parts[0][0]}${parts[1][0]}'.toUpperCase();
-    }
-    return user.name.isNotEmpty ? user.name[0].toUpperCase() : '?';
-  }
-
-  static const _focusIcons = <String, IconData>{
-    'Startup': Icons.rocket_launch_rounded,
-    'Research': Icons.science_rounded,
-    'Side Project': Icons.handyman_rounded,
-    'Open Source': Icons.public_rounded,
-  };
-
-  static const _stageIcons = <String, IconData>{
-    'Idea': Icons.lightbulb_rounded,
-    'MVP': Icons.construction_rounded,
-    'Launched': Icons.rocket_rounded,
-    'Scaling': Icons.trending_up_rounded,
-  };
 
   @override
   Widget build(BuildContext context) {
@@ -762,7 +657,7 @@ class _MockProfileCard extends StatelessWidget {
               ),
               alignment: Alignment.center,
               child: Text(
-                _initials,
+                peerInitials,
                 style: const TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w700,
@@ -776,47 +671,18 @@ class _MockProfileCard extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          user.name,
-                          style: GoogleFonts.sora(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                            color: AppColors.textPrimary,
-                          ),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                      // Pending chip
-                      if (state == _ConnectionState.pending) ...[
-                        const SizedBox(width: 8),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 3,
-                          ),
-                          decoration: BoxDecoration(
-                            color: AppColors.textTertiary
-                                .withValues(alpha: 0.15),
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: const Text(
-                            'Pending',
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: AppColors.textTertiary,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ],
+                  Text(
+                    peerName,
+                    style: GoogleFonts.sora(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.textPrimary,
+                    ),
+                    overflow: TextOverflow.ellipsis,
                   ),
                   const SizedBox(height: 4),
-                  // Compatibility score
                   Text(
-                    '${user.score}% match',
+                    '${conn.matchPercentage.toStringAsFixed(0)}% match',
                     style: const TextStyle(
                       fontSize: 12,
                       color: AppColors.textSecondary,
@@ -825,8 +691,30 @@ class _MockProfileCard extends StatelessWidget {
                 ],
               ),
             ),
-            // Chat icon — only visible when connected (rounded rectangle)
-            if (state == _ConnectionState.connected) ...[
+            // Accept button
+            if (showAcceptButton) ...[
+              const SizedBox(width: 8),
+              GestureDetector(
+                onTap: onAccept,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: AppColors.primary,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    'Accept',
+                    style: GoogleFonts.sora(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.onPrimary,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+            // Chat icon — only visible when connected
+            if (showChatButton) ...[
               const SizedBox(width: 8),
               GestureDetector(
                 onTap: onChat,
@@ -856,27 +744,21 @@ class _MockProfileCard extends StatelessWidget {
 // ── Chat list tile ───────────────────────────────────────────────────────
 
 class _ChatListTile extends StatelessWidget {
-  final _MockUser user;
+  final String name;
+  final String initials;
+  final String? summary;
   final VoidCallback onTap;
 
-  const _ChatListTile({required this.user, required this.onTap});
-
-  static const _lastMessages = <String, String>{
-    '1': 'We should collab sometime.',
-    '2': 'Let me know if you want to chat about AI!',
-  };
-
-  String get _initials {
-    final parts = user.name.trim().split(RegExp(r'\s+'));
-    if (parts.length >= 2) {
-      return '${parts[0][0]}${parts[1][0]}'.toUpperCase();
-    }
-    return user.name.isNotEmpty ? user.name[0].toUpperCase() : '?';
-  }
+  const _ChatListTile({
+    required this.name,
+    required this.initials,
+    required this.summary,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final preview = _lastMessages[user.id] ?? 'Tap to start chatting';
+    final preview = summary ?? 'Tap to start chatting';
 
     return GestureDetector(
       onTap: onTap,
@@ -898,7 +780,7 @@ class _ChatListTile extends StatelessWidget {
               ),
               alignment: Alignment.center,
               child: Text(
-                _initials,
+                initials,
                 style: const TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w700,
@@ -913,7 +795,7 @@ class _ChatListTile extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    user.name,
+                    name,
                     style: GoogleFonts.sora(
                       fontSize: 14,
                       fontWeight: FontWeight.w600,
@@ -931,15 +813,6 @@ class _ChatListTile extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                   ),
                 ],
-              ),
-            ),
-            const SizedBox(width: 8),
-            // Timestamp
-            Text(
-              '2m ago',
-              style: const TextStyle(
-                fontSize: 11,
-                color: AppColors.textTertiary,
               ),
             ),
           ],
@@ -1130,4 +1003,3 @@ class _StatusBanner extends StatelessWidget {
     );
   }
 }
-

@@ -4,7 +4,8 @@ from typing import Optional
 
 from dotenv import load_dotenv
 
-from fastapi import FastAPI, File, HTTPException, Query, UploadFile
+from fastapi import FastAPI, File, HTTPException, Query, UploadFile, WebSocket, WebSocketDisconnect
+from pydantic import BaseModel
 
 load_dotenv()
 
@@ -37,8 +38,24 @@ from models.chat import (
     create_message,
     get_messages,
 )
+from models.connection import (
+    Connection,
+    ConnectionCreate,
+    ConnectionAccept,
+    ConnectionList,
+    make_connection_id,
+    get_connection,
+    get_connections_for_user,
+    get_accepted_connections_for_user,
+    upsert_connection,
+    accept_connection,
+    update_connection_summaries,
+)
 from services.resume_parser import parse_resume, ParsedResume
-from services.similarity import find_matches, Weights
+from services.similarity import find_matches, Weights, vectorize_profile, compute_match
+from services.summary_generator import generate_connection_summaries
+from services.push_notification import send_push_notification
+from services.websocket_manager import ConnectionManager
 
 
 @asynccontextmanager
@@ -49,6 +66,10 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="RaikeShacks API", lifespan=lifespan)
+ws_manager = ConnectionManager()
+
+
+# ── Resume endpoint ────────────────────────────────────────────────────
 
 
 @app.post("/parse-resume", response_model=ParsedResume)
@@ -66,6 +87,9 @@ async def parse_resume_endpoint(file: UploadFile = File(...)):
     await db.parsed_resumes.insert_one(doc)
 
     return result
+
+
+# ── Student endpoints ──────────────────────────────────────────────────
 
 
 @app.post("/students", response_model=StudentProfile, status_code=201)
@@ -94,6 +118,10 @@ async def remove_student(uid: str):
     deleted = await delete_student(uid)
     if not deleted:
         raise HTTPException(status_code=404, detail="Student not found")
+
+    # Also clean up connections involving this user
+    db = get_db()
+    await db.connections.delete_many({"$or": [{"uid1": uid}, {"uid2": uid}]})
 
 
 @app.get("/students/{uid}/matches", response_model=MatchResponse)
@@ -155,6 +183,159 @@ async def match_student(
     )
 
 
+# ── FCM token endpoint ────────────────────────────────────────────────
+
+
+class FcmTokenBody(BaseModel):
+    token: str
+
+
+@app.put("/students/{uid}/fcm-token")
+async def update_fcm_token(uid: str, body: FcmTokenBody):
+    db = get_db()
+    result = await db.student_profiles.update_one(
+        {"uid": uid},
+        {"$set": {"fcm_token": body.token}},
+    )
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Student not found")
+    return {"status": "ok"}
+
+
+# ── Connection endpoints ───────────────────────────────────────────────
+
+
+@app.post("/connections", response_model=Connection, status_code=201)
+async def create_connection(body: ConnectionCreate):
+    # Sort UIDs to compute deterministic connection ID
+    uid1, uid2 = sorted([body.uid1, body.uid2])
+    connection_id = make_connection_id(uid1, uid2)
+
+    # Check if connection already exists
+    existing = await get_connection(connection_id)
+    if existing:
+        return existing
+
+    # Fetch both profiles
+    profile1 = await get_student(uid1)
+    profile2 = await get_student(uid2)
+    if profile1 is None or profile2 is None:
+        missing = uid1 if profile1 is None else uid2
+        raise HTTPException(status_code=404, detail=f"Student {missing} not found")
+
+    # Compute similarity score
+    vec1 = vectorize_profile(profile1)
+    vec2 = vectorize_profile(profile2)
+    match_score = compute_match(profile1, vec1, profile2, vec2, Weights())
+    match_percentage = round(match_score.score * 100, 1)
+
+    now = datetime.now(timezone.utc)
+    conn_doc = {
+        "connection_id": connection_id,
+        "uid1": uid1,
+        "uid2": uid2,
+        "uid1_accepted": False,
+        "uid2_accepted": False,
+        "match_percentage": match_percentage,
+        "uid1_summary": None,
+        "uid2_summary": None,
+        "notification_message": None,
+        "created_at": now.isoformat(),
+        "updated_at": None,
+    }
+
+    # Race-condition safe insert
+    connection = await upsert_connection(conn_doc)
+
+    # If >= 60%, generate AI summaries and notify
+    if match_percentage >= 60:
+        summaries = await generate_connection_summaries(
+            profile1.model_dump(), profile2.model_dump(), match_percentage
+        )
+        if summaries["uid1_summary"]:
+            connection = await update_connection_summaries(
+                connection_id,
+                summaries["uid1_summary"],
+                summaries["uid2_summary"],
+                summaries["notification_message"],
+            )
+
+        # Notify both users via WebSocket
+        event = {
+            "type": "match_found",
+            "connection": connection.model_dump(mode="json"),
+        }
+        await ws_manager.broadcast_to_users([uid1, uid2], event)
+
+        # FCM push for offline users
+        notif_msg = summaries.get("notification_message") or f"New match ({match_percentage:.0f}%)!"
+        for uid in [uid1, uid2]:
+            await send_push_notification(uid, "New Match!", notif_msg, {"connection_id": connection_id})
+
+    return connection
+
+
+@app.get("/connections/{connection_id}", response_model=Connection)
+async def read_connection(connection_id: str):
+    conn = await get_connection(connection_id)
+    if conn is None:
+        raise HTTPException(status_code=404, detail="Connection not found")
+    return conn
+
+
+@app.get("/connections/user/{uid}", response_model=ConnectionList)
+async def list_user_connections(uid: str):
+    connections = await get_connections_for_user(uid)
+    return ConnectionList(connections=connections)
+
+
+@app.get("/connections/user/{uid}/accepted", response_model=ConnectionList)
+async def list_accepted_connections(uid: str):
+    connections = await get_accepted_connections_for_user(uid)
+    return ConnectionList(connections=connections)
+
+
+@app.post("/connections/{connection_id}/accept", response_model=Connection)
+async def accept_connection_endpoint(connection_id: str, body: ConnectionAccept):
+    conn = await accept_connection(connection_id, body.uid)
+    if conn is None:
+        raise HTTPException(status_code=404, detail="Connection not found or UID mismatch")
+
+    other_uid = conn.uid2 if body.uid == conn.uid1 else conn.uid1
+
+    if conn.uid1_accepted and conn.uid2_accepted:
+        # Both accepted — auto-create chat room
+        room = await get_or_create_room(RoomCreate(participant_uids=[conn.uid1, conn.uid2]))
+
+        event = {
+            "type": "connection_complete",
+            "connection": conn.model_dump(mode="json"),
+            "room_id": room.room_id,
+        }
+        await ws_manager.broadcast_to_users([conn.uid1, conn.uid2], event)
+
+        for uid in [conn.uid1, conn.uid2]:
+            await send_push_notification(
+                uid, "Connection Complete!",
+                "You're connected! Start chatting now.",
+                {"connection_id": connection_id, "room_id": room.room_id},
+            )
+    else:
+        # Only one accepted — notify the other user
+        event = {
+            "type": "connection_accepted",
+            "connection": conn.model_dump(mode="json"),
+        }
+        await ws_manager.send_to_user(other_uid, event)
+        await send_push_notification(
+            other_uid, "Someone accepted!",
+            "A match accepted your connection. Check it out!",
+            {"connection_id": connection_id},
+        )
+
+    return conn
+
+
 # ── Chat endpoints ──────────────────────────────────────────────────────
 
 
@@ -200,3 +381,17 @@ async def list_messages(
 
     messages, total = await get_messages(room_id, limit, before)
     return MessageList(room_id=room_id, messages=messages, total=total)
+
+
+# ── WebSocket endpoint ─────────────────────────────────────────────────
+
+
+@app.websocket("/ws/{uid}")
+async def websocket_endpoint(websocket: WebSocket, uid: str):
+    await ws_manager.connect(uid, websocket)
+    try:
+        while True:
+            # Keep connection alive; client can send pings
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        ws_manager.disconnect(uid)

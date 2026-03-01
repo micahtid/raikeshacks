@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../services/backend_service.dart';
 import '../theme.dart';
 
 class ChatMessage {
@@ -18,11 +21,15 @@ class ChatMessage {
 class ChatScreen extends StatefulWidget {
   final String peerName;
   final String peerInitials;
+  final String roomId;
+  final String myUid;
 
   const ChatScreen({
     super.key,
     required this.peerName,
     required this.peerInitials,
+    required this.roomId,
+    required this.myUid,
   });
 
   @override
@@ -32,56 +39,64 @@ class ChatScreen extends StatefulWidget {
 class _ChatScreenState extends State<ChatScreen> {
   final TextEditingController _controller = TextEditingController();
   final ScrollController _scrollController = ScrollController();
-  late final List<ChatMessage> _messages;
+  final List<ChatMessage> _messages = [];
+  bool _isLoading = true;
+  Timer? _pollTimer;
 
   @override
   void initState() {
     super.initState();
-    _messages = _buildMockMessages();
+    _loadMessages();
+    // Poll for new messages every 5 seconds
+    _pollTimer = Timer.periodic(
+      const Duration(seconds: 5),
+      (_) => _loadMessages(),
+    );
   }
 
   @override
   void dispose() {
+    _pollTimer?.cancel();
     _controller.dispose();
     _scrollController.dispose();
     super.dispose();
   }
 
-  List<ChatMessage> _buildMockMessages() {
-    final now = DateTime.now();
-    return [
-      ChatMessage(
-        text: 'Hey! I saw you\'re working on something similar.',
-        isMe: false,
-        timestamp: now.subtract(const Duration(minutes: 30)),
-      ),
-      ChatMessage(
-        text: 'Yeah! I\'ve been building an MVP for the past few weeks.',
-        isMe: true,
-        timestamp: now.subtract(const Duration(minutes: 28)),
-      ),
-      ChatMessage(
-        text: 'That\'s awesome. What stack are you using?',
-        isMe: false,
-        timestamp: now.subtract(const Duration(minutes: 25)),
-      ),
-      ChatMessage(
-        text: 'Flutter for mobile, Node.js backend. You?',
-        isMe: true,
-        timestamp: now.subtract(const Duration(minutes: 23)),
-      ),
-      ChatMessage(
-        text: 'Nice! I\'m on React Native + Firebase. We should collab sometime.',
-        isMe: false,
-        timestamp: now.subtract(const Duration(minutes: 20)),
-      ),
-    ];
+  Future<void> _loadMessages() async {
+    final data = await BackendService.getChatMessages(widget.roomId);
+    if (data == null || !mounted) return;
+
+    final messageList = data['messages'] as List? ?? [];
+    final newMessages = messageList.map((m) {
+      return ChatMessage(
+        text: m['content'] as String,
+        isMe: m['sender_uid'] == widget.myUid,
+        timestamp: DateTime.parse(m['timestamp'] as String),
+      );
+    }).toList();
+
+    if (mounted) {
+      final hadMessages = _messages.isNotEmpty;
+      final newCount = newMessages.length;
+      setState(() {
+        _messages.clear();
+        _messages.addAll(newMessages);
+        _isLoading = false;
+      });
+      // Auto-scroll if new messages arrived
+      if (!hadMessages || newCount > _messages.length) {
+        _scrollToBottom();
+      }
+    }
   }
 
-  void _sendMessage() {
+  Future<void> _sendMessage() async {
     final text = _controller.text.trim();
     if (text.isEmpty) return;
 
+    _controller.clear();
+
+    // Optimistically add the message
     setState(() {
       _messages.add(ChatMessage(
         text: text,
@@ -89,8 +104,13 @@ class _ChatScreenState extends State<ChatScreen> {
         timestamp: DateTime.now(),
       ));
     });
-    _controller.clear();
+    _scrollToBottom();
 
+    // Send to backend
+    await BackendService.sendChatMessage(widget.roomId, widget.myUid, text);
+  }
+
+  void _scrollToBottom() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scrollController.hasClients) {
         _scrollController.animateTo(
@@ -120,15 +140,24 @@ class _ChatScreenState extends State<ChatScreen> {
             const Divider(height: 0.5),
             // ── Messages ──
             Expanded(
-              child: ListView.builder(
-                controller: _scrollController,
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-                itemCount: _messages.length,
-                itemBuilder: (context, index) {
-                  final msg = _messages[index];
-                  return _ChatBubble(message: msg);
-                },
-              ),
+              child: _isLoading
+                  ? const Center(child: CircularProgressIndicator())
+                  : _messages.isEmpty
+                      ? Center(
+                          child: Text(
+                            'No messages yet. Say hi!',
+                            style: TextStyle(color: AppColors.textSecondary),
+                          ),
+                        )
+                      : ListView.builder(
+                          controller: _scrollController,
+                          padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                          itemCount: _messages.length,
+                          itemBuilder: (context, index) {
+                            final msg = _messages[index];
+                            return _ChatBubble(message: msg);
+                          },
+                        ),
             ),
             // ── Input bar ──
             _ChatInputBar(

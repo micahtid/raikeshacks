@@ -7,8 +7,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'screens/dashboard_screen.dart';
 import 'screens/onboarding_screen.dart';
+import 'services/connection_service.dart';
+import 'services/fcm_service.dart';
 import 'services/nearby_service.dart';
 import 'services/notification_service.dart';
+import 'services/websocket_service.dart';
 import 'theme.dart';
 
 void main() async {
@@ -41,6 +44,9 @@ class _AuthGateState extends State<AuthGate> {
   late final GoogleSignIn _googleSignIn;
   final NearbyService _nearbyService = NearbyService();
   final NotificationService _notificationService = NotificationService();
+  final ConnectionService _connectionService = ConnectionService();
+  final WebSocketService _webSocketService = WebSocketService();
+  final FcmService _fcmService = FcmService();
   GoogleSignInAccount? _currentUser;
   bool _isLoading = true;
   bool _onboardingComplete = false;
@@ -81,11 +87,35 @@ class _AuthGateState extends State<AuthGate> {
     _storedUid = prefs.getString('student_uid');
     if (_storedUid != null && _storedUid!.isNotEmpty) {
       _onboardingComplete = true;
+      await _initServices();
     }
     if (mounted) {
       setState(() {
         _isLoading = false;
       });
+    }
+  }
+
+  Future<void> _initServices() async {
+    // Wire NearbyService callbacks to ConnectionService
+    _nearbyService.onPeerUidReceived = (uid) =>
+        _connectionService.onPeerDiscovered(uid);
+    _nearbyService.onPeerLost = (endpointId) =>
+        _connectionService.onPeerLost(endpointId, _nearbyService);
+
+    // Initialize ConnectionService
+    await _connectionService.initialize();
+
+    // Connect WebSocket for real-time events
+    final baseUrl = dotenv.env['BACKEND_URL'] ?? 'https://raikeshacks-teal.vercel.app';
+    if (_connectionService.myUid != null) {
+      _webSocketService.onMatchFound = (_) => _connectionService.refreshConnections();
+      _webSocketService.onConnectionAccepted = (_) => _connectionService.refreshConnections();
+      _webSocketService.onConnectionComplete = (_) => _connectionService.refreshConnections();
+      _webSocketService.connect(_connectionService.myUid!, baseUrl);
+
+      // Initialize FCM (stub until Firebase project is set up)
+      await _fcmService.initialize(_connectionService.myUid!);
     }
   }
 
@@ -102,13 +132,21 @@ class _AuthGateState extends State<AuthGate> {
   }
 
   Future<void> _handleSignOut() async {
+    _webSocketService.disconnect();
     await _nearbyService.stopAll();
     await _googleSignIn.signOut();
     setState(() => _onboardingComplete = false);
   }
 
+  void _onOnboardingComplete() {
+    setState(() => _onboardingComplete = true);
+    _initServices();
+  }
+
   @override
   void dispose() {
+    _webSocketService.disconnect();
+    _connectionService.dispose();
     _nearbyService.dispose();
     super.dispose();
   }
@@ -173,7 +211,7 @@ class _AuthGateState extends State<AuthGate> {
 
     if (!_onboardingComplete) {
       return OnboardingScreen(
-        onComplete: () => setState(() => _onboardingComplete = true),
+        onComplete: _onOnboardingComplete,
         onSignOut: _handleSignOut,
         fullName: _currentUser!.displayName ?? '',
         email: _currentUser!.email,
@@ -192,6 +230,7 @@ class _AuthGateState extends State<AuthGate> {
       displayName: displayName,
       onSignOut: _handleSignOut,
       nearbyService: _nearbyService,
+      connectionService: _connectionService,
     );
   }
 }
