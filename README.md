@@ -27,7 +27,7 @@ knkt bridges this gap with three core ideas:
 
 **AI-driven compatibility.** Rather than showing you everyone nearby, knkt runs a multi-dimensional matching algorithm that scores how well two students *complement* each other: do they have what the other needs? Are they working toward similar goals? Are they in the same domain? Only strong matches surface.
 
-**Frictionless connection.** When a strong match is found, both students receive a push notification with a personalized AI-generated summary explaining *why* they'd work well together. If both accept, a chat room opens instantly.
+**Frictionless connection.** When a strong match is found, both students receive a push notification with a personalized, name-free AI-generated summary explaining *why* they'd work well together. Profiles stay anonymous until both students accept the match — only then are real identities revealed and a chat room opens instantly.
 
 ---
 
@@ -137,9 +137,31 @@ knkt bridges this gap with three core ideas:
                 └──────────┬──────────────────┘
                            ▼
               ┌─────────────────────────────────┐
+              │      ANONYMOUS DISCOVERY        │
+              │                                 │
+              │  Profiles are anonymous:        │
+              │  deterministic "Adj Animal"     │
+              │  names + emoji avatars          │
+              │  (Gemini summaries omit names)  │
+              │                                 │
+              │  Three UI states:               │
+              │  ┌──────────┐  ┌────────────┐   │
+              │  │ Discover │  │    Sent    │   │
+              │  │(Connect) │─►│ (Pending)  │   │
+              │  └──────────┘  └────────────┘   │
+              │       ▲        ┌────────────┐   │
+              │       │        │  Incoming  │   │
+              │       └────────│ (Accept)   │   │
+              │                └────────────┘   │
+              └──────────────┬──────────────────┘
+                             │
+                    Both students accept
+                             │
+                             ▼
+              ┌─────────────────────────────────┐
               │       MUTUAL ACCEPTANCE         │
               │                                 │
-              │  Both students accept match     │
+              │  Real identities revealed       │
               │         │                       │
               │         ▼                       │
               │  Chat room auto-created         │
@@ -174,7 +196,7 @@ OpenRouter serves as a unified gateway to two external AI models:
 - **Google Gemini 2.0 Flash** handles two tasks: (1) parsing uploaded resumes into structured profile data, and (2) generating personalized match summaries that explain *why* two students complement each other.
 
 ### 🔔 Firebase Cloud Messaging (FCM)
-Push notifications are delivered via the FCM v1 API using OAuth 2.0 service account authentication with RS256-signed JWTs (1-hour token caching). Notifications fire on three events: match found, connection accepted, and connection complete. Data payloads include connection and room IDs for deep linking.
+Push notifications are delivered via the FCM v1 API using the `google-auth` library for OAuth 2.0 service account authentication with automatic token refresh. Notifications fire on four events: match found, connection accepted, connection complete, and re-encounter (matched peer nearby again, with a 1-hour cooldown). Data payloads include connection and room IDs for deep linking.
 
 ### 🚂 Railway
 The backend is deployed on Railway using Nixpacks for automated Python 3.13 builds. Railway provides continuous deployment from the repository, environment variable management, and zero-config HTTPS.
@@ -187,8 +209,9 @@ The backend is deployed on Railway using Nixpacks for automated Python 3.13 buil
 knkt/
 ├── mobile_app/              # Flutter application
 │   └── lib/
-│       ├── screens/         # Onboarding, dashboard, chat, profile
+│       ├── screens/         # Onboarding, dashboard, chat, edit profile
 │       ├── services/        # Nearby BT, connections, WebSocket, FCM
+│       ├── utils/           # Anonymous identity, helpers
 │       └── models/          # Data models
 ├── web_server/              # FastAPI backend
 │   ├── models/              # Pydantic schemas (student, connection, chat)
