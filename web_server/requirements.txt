@@ -8,5 +8,6 @@ httpx
 python-docx
 PyPDF2
 python-multipart
-cryptography
+google-auth
+requests
 websockets
