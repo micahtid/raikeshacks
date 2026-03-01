@@ -1,5 +1,6 @@
 fastapi
 uvicorn[standard]
+gunicorn
 motor
 pydantic[email]
 python-dotenv
@@ -7,3 +8,6 @@ httpx
 python-docx
 PyPDF2
 python-multipart
+google-auth
+requests
+websockets
