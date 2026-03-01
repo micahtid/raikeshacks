@@ -1,5 +1,5 @@
 """
-Minimal HTTP server that mimics the Vercel /api/similarity-check endpoint.
+Minimal HTTP server that mimics the /api/similarity-check endpoint.
 
 Usage:
     python test_server.py
