@@ -963,7 +963,7 @@ class _SelectionItem extends StatelessWidget {
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
         height: AppSpacing.selectionItemHeight,
-        padding: const EdgeInsets.symmetric(horizontal: 24),
+        padding: const EdgeInsets.symmetric(horizontal: 16),
         decoration: BoxDecoration(
           color: selected ? AppColors.surfaceLightBlue : Colors.transparent,
           borderRadius: BorderRadius.circular(AppRadius.card),
