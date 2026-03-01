@@ -14,8 +14,9 @@ class NotificationService {
 
   /// Initialise the plugin and create the Android notification channel.
   Future<void> init() async {
-    const androidSettings =
-        AndroidInitializationSettings('@mipmap/ic_launcher');
+    const androidSettings = AndroidInitializationSettings(
+      '@mipmap/ic_launcher',
+    );
     const iosSettings = DarwinInitializationSettings(
       requestAlertPermission: true,
       requestBadgePermission: true,
@@ -23,18 +24,46 @@ class NotificationService {
     );
 
     await _plugin.initialize(
-      const InitializationSettings(
-        android: androidSettings,
-        iOS: iosSettings,
-      ),
+      const InitializationSettings(android: androidSettings, iOS: iosSettings),
     );
 
     // Request notification permission on Android 13+.
     if (Platform.isAndroid) {
-      await _plugin
+      final android = _plugin
           .resolvePlatformSpecificImplementation<
-              AndroidFlutterLocalNotificationsPlugin>()
-          ?.requestNotificationsPermission();
+            AndroidFlutterLocalNotificationsPlugin
+          >();
+      await android?.requestNotificationsPermission();
+
+      // Explicitly create the FCM notification channel so the OS can
+      // display system notifications even if the app never showed one yet.
+      const alertsChannel = AndroidNotificationChannel(
+        _channelId,
+        _channelName,
+        description: _channelDescription,
+        importance: Importance.high,
+      );
+      await android?.createNotificationChannel(alertsChannel);
+    }
+  }
+
+  /// Create the notification channel for the background/foreground service.
+  /// Android requires the channel to exist before the service starts.
+  /// Uses a standalone plugin instance so it works before [init] is called.
+  static Future<void> createDiscoveryChannel() async {
+    if (Platform.isAndroid) {
+      const channel = AndroidNotificationChannel(
+        'knkt_discovery',
+        'Background Discovery',
+        description: 'Keeps Bluetooth active in the background',
+        importance: Importance.low,
+      );
+      final plugin = FlutterLocalNotificationsPlugin();
+      await plugin
+          .resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin
+          >()
+          ?.createNotificationChannel(channel);
     }
   }
 
@@ -60,5 +89,28 @@ class NotificationService {
       details,
     );
     debugPrint('[knkt] notification: $peerName is nearby');
+  }
+
+  /// Show a general-purpose notification (used by FCM handlers).
+  Future<void> showNotification({
+    required int id,
+    required String title,
+    required String body,
+  }) async {
+    const androidDetails = AndroidNotificationDetails(
+      _channelId,
+      _channelName,
+      channelDescription: _channelDescription,
+      importance: Importance.high,
+      priority: Priority.high,
+    );
+    const iosDetails = DarwinNotificationDetails();
+    const details = NotificationDetails(
+      android: androidDetails,
+      iOS: iosDetails,
+    );
+
+    await _plugin.show(id, title, body, details);
+    debugPrint('[knkt] notification shown: $title');
   }
 }

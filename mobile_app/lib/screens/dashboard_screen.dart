@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/connection_model.dart';
 import '../services/backend_service.dart';
 import '../services/connection_service.dart';
+import '../services/background_service.dart';
 import '../services/nearby_service.dart';
 import '../theme.dart';
 import '../utils/anonymous_identity.dart';
@@ -88,10 +89,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final granted = await _svc.requestPermissions();
     if (!granted) return;
     await _svc.startBoth();
+    await BackgroundServiceManager.start();
     if (mounted) setState(() => _isScanning = true);
   }
 
   Future<void> _stopScanning() async {
+    await BackgroundServiceManager.stop();
     await _svc.stopAll();
     if (mounted) setState(() => _isScanning = false);
   }
@@ -118,10 +121,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: Text(
-              'Clear',
-              style: TextStyle(color: AppColors.primary),
-            ),
+            child: Text('Clear', style: TextStyle(color: AppColors.primary)),
           ),
         ],
       ),
@@ -137,9 +137,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
       if (uid == null || uid.isEmpty) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('No account found')),
-          );
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text('No account found')));
           setState(() => _isClearingData = false);
         }
         return;
@@ -155,16 +155,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
         }
       } else {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Failed to clear data')),
-          );
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text('Failed to clear data')));
         }
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error: $e')));
       }
     } finally {
       if (mounted) setState(() => _isClearingData = false);
@@ -189,10 +189,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: Text(
-              'Delete',
-              style: TextStyle(color: AppColors.danger),
-            ),
+            child: Text('Delete', style: TextStyle(color: AppColors.danger)),
           ),
         ],
       ),
@@ -229,9 +226,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error: $e')));
       }
     } finally {
       if (mounted) setState(() => _isDeleting = false);
@@ -650,8 +647,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         ? AppColors.onPrimary
                         : AppColors.textTertiary,
                     shape: RoundedRectangleBorder(
-                      borderRadius:
-                          BorderRadius.circular(AppRadius.button),
+                      borderRadius: BorderRadius.circular(AppRadius.button),
                     ),
                   ),
                   child: Text(
@@ -895,11 +891,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
     return Column(
       key: const ValueKey('chat'),
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(
-            AppSpacing.screenPadding, 24, AppSpacing.screenPadding, 16,
+            AppSpacing.screenPadding,
+            24,
+            AppSpacing.screenPadding,
+            16,
           ),
           child: Text('Messages', style: theme.textTheme.headlineSmall?.copyWith(fontSize: 26)),
         ),
@@ -974,8 +973,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
       padding: const EdgeInsets.only(top: 24, bottom: 120),
       children: [
         Padding(
-          padding:
-              const EdgeInsets.symmetric(horizontal: AppSpacing.screenPadding),
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.screenPadding,
+          ),
           child: FilledButton(
             onPressed: _isClearingData ? null : _clearData,
             style: FilledButton.styleFrom(
@@ -996,8 +996,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ),
         const SizedBox(height: 12),
         Padding(
-          padding:
-              const EdgeInsets.symmetric(horizontal: AppSpacing.screenPadding),
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.screenPadding,
+          ),
           child: FilledButton(
             onPressed: _isDeleting ? null : _deleteAccount,
             style: FilledButton.styleFrom(
@@ -1247,10 +1248,7 @@ class _GlassNavBar extends StatelessWidget {
   final int selectedIndex;
   final ValueChanged<int> onTap;
 
-  const _GlassNavBar({
-    required this.selectedIndex,
-    required this.onTap,
-  });
+  const _GlassNavBar({required this.selectedIndex, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -1270,9 +1268,7 @@ class _GlassNavBar extends StatelessWidget {
               ],
             ),
             borderRadius: BorderRadius.circular(20),
-            border: Border.all(
-              color: Colors.white.withValues(alpha: 0.08),
-            ),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
           ),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
