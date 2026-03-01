@@ -84,13 +84,19 @@ async def send_push_to_all(
     This is a temporary implementation for testing. Replace with targeted
     delivery (send only to the relevant users) once FCM routing is verified.
     """
+    print(f"[FCM] send_push_to_all called: title={title!r}, body={body!r}")
+
     sa = _get_service_account()
     if not sa:
+        print("[FCM] ERROR: No service account — GOOGLE_SERVICE_ACCOUNT_JSON env var missing or empty")
         return {}
 
     project_id = os.getenv("FIREBASE_PROJECT_ID") or sa.get("project_id")
     if not project_id:
+        print("[FCM] ERROR: No project_id — FIREBASE_PROJECT_ID env var missing and not in SA JSON")
         return {}
+
+    print(f"[FCM] project_id={project_id}")
 
     db = get_db()
     students = await db.student_profiles.find(
@@ -98,16 +104,21 @@ async def send_push_to_all(
         {"uid": 1, "fcm_token": 1},
     ).to_list(None)
 
+    print(f"[FCM] Found {len(students)} student(s) with FCM tokens")
+
     results = {}
     try:
         access_token = _get_access_token(sa)
-    except Exception:
+        print(f"[FCM] Got access token: {access_token[:20]}...")
+    except Exception as e:
+        print(f"[FCM] ERROR: Failed to get access token: {e}")
         return {}
 
     for student in students:
         fcm_token = student.get("fcm_token")
         uid = student.get("uid", "unknown")
         if not fcm_token:
+            print(f"[FCM] Skipping {uid} — no fcm_token")
             continue
         try:
             message: dict = {
@@ -138,10 +149,14 @@ async def send_push_to_all(
                     },
                     json=message,
                 )
-                results[uid] = "sent" if resp.status_code == 200 else f"failed ({resp.status_code})"
+                status = "sent" if resp.status_code == 200 else f"failed ({resp.status_code}: {resp.text})"
+                results[uid] = status
+                print(f"[FCM] {uid}: {status}")
         except Exception as e:
             results[uid] = f"error: {e}"
+            print(f"[FCM] {uid}: error: {e}")
 
+    print(f"[FCM] send_push_to_all done: {results}")
     return results
 
 
@@ -156,24 +171,26 @@ async def send_push_notification(
     Looks up the user's fcm_token from student_profiles.
     Returns True on success, False on failure.
     """
+    print(f"[FCM] send_push_notification called: uid={uid}, title={title!r}")
+
     sa = _get_service_account()
     if not sa:
+        print("[FCM] ERROR: No service account")
         return False
 
     project_id = os.getenv("FIREBASE_PROJECT_ID") or sa.get("project_id")
     if not project_id:
+        print("[FCM] ERROR: No project_id")
         return False
 
     db = get_db()
     student = await db.student_profiles.find_one({"uid": uid}, {"fcm_token": 1})
     if not student or not student.get("fcm_token"):
+        print(f"[FCM] No FCM token found for uid={uid}")
         return False
 
     try:
         access_token = _get_access_token(sa)
-        # Send notification + data so the OS can display the notification
-        # even when the app is killed. The app handles foreground display
-        # separately via flutter_local_notifications.
         message: dict = {
             "message": {
                 "token": student["fcm_token"],
@@ -204,6 +221,9 @@ async def send_push_notification(
                 },
                 json=message,
             )
-            return resp.status_code == 200
-    except Exception:
+            success = resp.status_code == 200
+            print(f"[FCM] send_push_notification {uid}: {'sent' if success else f'failed ({resp.status_code}: {resp.text})'}")
+            return success
+    except Exception as e:
+        print(f"[FCM] send_push_notification {uid}: error: {e}")
         return False
