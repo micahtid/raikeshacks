@@ -9,6 +9,7 @@ import 'package:nearby_connections/nearby_connections.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 import '../models/peer_device.dart';
+import 'notification_service.dart';
 import 'similarity_api_service.dart';
 
 /// UI-side service that drives Nearby Connections **in the main isolate**.
@@ -35,8 +36,13 @@ class NearbyService extends ChangeNotifier {
   // ── Internal ──────────────────────────────────────────────────────────────
   final _nearby = Nearby();
   final _pendingNames = <String, String>{};
+  NotificationService? _notificationService;
 
   // ── Public API ────────────────────────────────────────────────────────────
+
+  void setNotificationService(NotificationService service) {
+    _notificationService = service;
+  }
 
   void setDisplayName(String name) {
     displayName = name;
@@ -155,6 +161,9 @@ class NearbyService extends ChangeNotifier {
   void _onEndpointFound(String endpointId, String name, String serviceId) {
     debugPrint('[knkt] onEndpointFound: $endpointId ($name)');
     discoveredPeers[endpointId] = PeerDevice(endpointId: endpointId, name: name);
+    if (name != displayName) {
+      _notificationService?.showNearbyNotification(name);
+    }
     notifyListeners();
 
     // Auto-connect: the device whose name sorts first initiates.
