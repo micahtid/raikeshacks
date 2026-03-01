@@ -66,6 +66,42 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Future<void> _loadMessages() async {
     final data = await BackendService.getChatMessages(widget.roomId);
+
+    // If no server data and this is the mock Alex Chen room, inject mock chat
+    if ((data == null || (data['messages'] as List?)?.isEmpty == true) &&
+        widget.roomId.contains('mock_user_alex_001')) {
+      if (_messages.isEmpty && mounted) {
+        final now = DateTime.now();
+        setState(() {
+          _messages.addAll([
+            ChatMessage(
+              text: 'Hey! I saw we matched — your ML background is exactly what I need for the study assistant.',
+              isMe: false,
+              timestamp: now.subtract(const Duration(hours: 2, minutes: 15)),
+            ),
+            ChatMessage(
+              text: 'Thanks! Yeah the project sounds really cool. What stack are you using for the frontend?',
+              isMe: true,
+              timestamp: now.subtract(const Duration(hours: 2, minutes: 10)),
+            ),
+            ChatMessage(
+              text: 'React + TypeScript with Figma for design. The backend is where I need help though — thinking Python + FastAPI?',
+              isMe: false,
+              timestamp: now.subtract(const Duration(hours: 2, minutes: 5)),
+            ),
+            ChatMessage(
+              text: 'That would work great with a ML pipeline. Want to grab coffee this week and sketch it out?',
+              isMe: true,
+              timestamp: now.subtract(const Duration(hours: 1, minutes: 58)),
+            ),
+          ]);
+          _isLoading = false;
+        });
+        _scrollToBottom();
+      }
+      return;
+    }
+
     if (data == null || !mounted) return;
 
     final messageList = data['messages'] as List? ?? [];

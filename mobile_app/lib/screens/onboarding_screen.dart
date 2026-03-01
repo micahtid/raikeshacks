@@ -798,6 +798,35 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           // Domain / industry
           Text('What industry are you in?', style: theme.textTheme.titleSmall),
           const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _domainController,
+                  decoration: const InputDecoration(
+                    hintText: 'Add custom domain...',
+                  ),
+                  textInputAction: TextInputAction.done,
+                  onSubmitted: _addDomain,
+                ),
+              ),
+              const SizedBox(width: 8),
+              GestureDetector(
+                onTap: () => _addDomain(_domainController.text),
+                child: Container(
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(
+                    color: AppColors.surfaceGray,
+                    borderRadius: BorderRadius.circular(AppRadius.button),
+                    border: Border.all(color: AppColors.border, width: 1),
+                  ),
+                  child: const Icon(Icons.add, color: AppColors.textPrimary),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
           Wrap(
             spacing: 8,
             runSpacing: 8,
@@ -827,35 +856,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                   onTap: () => setState(() => _selectedDomains.remove(domain)),
                 );
               }),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: _domainController,
-                  decoration: const InputDecoration(
-                    hintText: 'Add custom domain...',
-                  ),
-                  textInputAction: TextInputAction.done,
-                  onSubmitted: _addDomain,
-                ),
-              ),
-              const SizedBox(width: 8),
-              GestureDetector(
-                onTap: () => _addDomain(_domainController.text),
-                child: Container(
-                  width: 48,
-                  height: 48,
-                  decoration: BoxDecoration(
-                    color: AppColors.surfaceGray,
-                    borderRadius: BorderRadius.circular(AppRadius.button),
-                    border: Border.all(color: AppColors.border, width: 1),
-                  ),
-                  child: const Icon(Icons.add, color: AppColors.textPrimary),
-                ),
-              ),
             ],
           ),
           const SizedBox(height: AppSpacing.screenPadding),

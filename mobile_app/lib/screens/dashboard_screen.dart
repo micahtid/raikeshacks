@@ -11,6 +11,27 @@ import '../services/nearby_service.dart';
 import '../theme.dart';
 import '../utils/anonymous_identity.dart';
 import 'chat_screen.dart';
+import 'edit_profile_screen.dart'; // EditProfileContent
+
+// ── Anonymous avatar colors ──────────────────────────────────────────────────
+
+const _anonAvatarColors = [
+  Color(0xFF5C6BC0), // indigo
+  Color(0xFF7E57C2), // deep purple
+  Color(0xFF26A69A), // teal
+  Color(0xFFEF5350), // red
+  Color(0xFFAB47BC), // purple
+  Color(0xFF42A5F5), // blue
+  Color(0xFF66BB6A), // green
+  Color(0xFFFF7043), // deep orange
+  Color(0xFF26C6DA), // cyan
+  Color(0xFFEC407A), // pink
+];
+
+Color _anonColor(String connectionId) {
+  final hash = connectionId.hashCode.abs();
+  return _anonAvatarColors[hash % _anonAvatarColors.length];
+}
 
 // ── Dashboard screen ─────────────────────────────────────────────────────────
 
@@ -334,7 +355,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   ? _buildDashboardContent(theme)
                   : _selectedTab == 1
                       ? _buildChatContent(theme)
-                      : _buildProfileContent(theme),
+                      : _selectedTab == 2
+                          ? EditProfileContent(
+                              key: const ValueKey('profile'),
+                              userPhotoUrl: widget.userPhotoUrl,
+                              displayName: widget.displayName,
+                              onSignOut: widget.onSignOut,
+                            )
+                          : _buildDeveloperContent(),
             ),
           ),
           // Floating glass nav bar
@@ -366,19 +394,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
       children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(
-            AppSpacing.screenPadding, 20, AppSpacing.screenPadding, 10,
+            AppSpacing.screenPadding, 28, AppSpacing.screenPadding, 14,
           ),
           child: Row(
             children: [
               Text(
                 title,
-                style: theme.textTheme.titleSmall?.copyWith(
+                style: GoogleFonts.sora(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
                   color: AppColors.textTertiary,
                 ),
               ),
               const SizedBox(width: 8),
               Container(
-                constraints: const BoxConstraints(minWidth: 22, minHeight: 22),
+                constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
                 padding: const EdgeInsets.all(4),
                 decoration: BoxDecoration(
                   color: AppColors.textPrimary.withValues(alpha: 0.12),
@@ -389,18 +419,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   '${connections.length}',
                   style: const TextStyle(
                     color: AppColors.textPrimary,
-                    fontSize: 11,
+                    fontSize: 12,
                     fontWeight: FontWeight.w700,
                   ),
                 ),
               ),
+              const SizedBox(width: 12),
+              const Expanded(child: Divider(height: 1)),
             ],
           ),
         ),
         ...connections.map((conn) {
           return Padding(
             padding: const EdgeInsets.fromLTRB(
-              AppSpacing.screenPadding, 0, AppSpacing.screenPadding, 10,
+              AppSpacing.screenPadding, 0, AppSpacing.screenPadding, 12,
             ),
             child: _ConnectionCard(
               conn: conn,
@@ -435,16 +467,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
           // Welcome header
           Padding(
             padding: const EdgeInsets.fromLTRB(
-              AppSpacing.screenPadding, 24, AppSpacing.screenPadding, 0,
+              AppSpacing.screenPadding, 28, AppSpacing.screenPadding, 0,
             ),
             child: Text(
-              'Welcome back, $_firstName',
-              style: theme.textTheme.headlineSmall,
+              '\u{1F44B} Welcome back, $_firstName',
+              style: theme.textTheme.headlineSmall?.copyWith(fontSize: 26),
             ),
           ),
           // Status banner
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+            padding: const EdgeInsets.fromLTRB(AppSpacing.screenPadding, 20, AppSpacing.screenPadding, 0),
             child: _StatusBanner(
               message: _svc.statusMessage,
               isScanning: _isScanning,
@@ -479,6 +511,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final isComplete = conn.isComplete;
     final isAnon = _isAnonymous(conn);
     final tags = _peerTags(conn);
+    final avatarColor = isAnon
+        ? _anonColor(conn.connectionId)
+        : AppColors.surfaceLightBlue;
 
     showModalBottomSheet(
       context: context,
@@ -515,7 +550,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
         return Container(
           margin: const EdgeInsets.fromLTRB(12, 0, 12, 24),
-          padding: const EdgeInsets.all(24),
+          padding: const EdgeInsets.all(28),
           decoration: BoxDecoration(
             color: AppColors.surfaceGray,
             borderRadius: BorderRadius.circular(20),
@@ -531,34 +566,34 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   _showFullProfileSheet(conn);
                 } : null,
                 child: Container(
-                  width: 64,
-                  height: 64,
+                  width: 72,
+                  height: 72,
                   decoration: BoxDecoration(
-                    color: AppColors.surfaceLightBlue,
-                    borderRadius: BorderRadius.circular(20),
+                    color: avatarColor,
+                    borderRadius: BorderRadius.circular(22),
                   ),
                   alignment: Alignment.center,
                   child: Text(
                     initials,
                     style: TextStyle(
-                      fontSize: isAnon ? 32 : 22,
+                      fontSize: isAnon ? 36 : 24,
                       fontWeight: FontWeight.w700,
-                      color: AppColors.textPrimary,
+                      color: Colors.white,
                     ),
                   ),
                 ),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 18),
               // Name
               Text(
                 name,
                 style: GoogleFonts.sora(
-                  fontSize: 18,
+                  fontSize: 20,
                   fontWeight: FontWeight.w700,
                   color: AppColors.textPrimary,
                 ),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 10),
               // Tags instead of match percentage
               if (tags.isNotEmpty)
                 Wrap(
@@ -566,7 +601,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   runSpacing: 6,
                   alignment: WrapAlignment.center,
                   children: tags.map((tag) => Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                     decoration: BoxDecoration(
                       color: AppColors.primary.withValues(alpha: 0.15),
                       borderRadius: BorderRadius.circular(12),
@@ -574,7 +609,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     child: Text(
                       tag,
                       style: const TextStyle(
-                        fontSize: 12,
+                        fontSize: 13,
                         fontWeight: FontWeight.w500,
                         color: AppColors.primary,
                       ),
@@ -585,24 +620,24 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 Text(
                   '${conn.matchPercentage.toStringAsFixed(0)}% match',
                   style: const TextStyle(
-                    fontSize: 14,
+                    fontSize: 15,
                     fontWeight: FontWeight.w600,
                     color: AppColors.primary,
                   ),
                 ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 18),
               // Summary (from Gemini)
               if (summary != null && summary.isNotEmpty)
                 Text(
                   summary,
                   textAlign: TextAlign.center,
                   style: const TextStyle(
-                    fontSize: 13,
+                    fontSize: 14,
                     height: 1.5,
                     color: AppColors.textSecondary,
                   ),
                 ),
-              const SizedBox(height: 24),
+              const SizedBox(height: 28),
               // Action button
               SizedBox(
                 width: double.infinity,
@@ -622,7 +657,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   child: Text(
                     buttonLabel,
                     style: GoogleFonts.sora(
-                      fontSize: 14,
+                      fontSize: 15,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
@@ -804,16 +839,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   Widget _profileSection(String label, String value) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.only(bottom: 18),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _profileLabel(label),
-          const SizedBox(height: 4),
+          const SizedBox(height: 5),
           Text(
             value,
             style: const TextStyle(
-              fontSize: 14,
+              fontSize: 15,
               color: AppColors.textPrimary,
             ),
           ),
@@ -826,7 +861,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return Text(
       label,
       style: const TextStyle(
-        fontSize: 12,
+        fontSize: 13,
         fontWeight: FontWeight.w600,
         color: AppColors.textTertiary,
       ),
@@ -835,7 +870,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   Widget _tagChip(String text, {bool accent = false}) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
         color: accent
             ? AppColors.primary.withValues(alpha: 0.15)
@@ -845,7 +880,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       child: Text(
         text,
         style: TextStyle(
-          fontSize: 12,
+          fontSize: 13,
           fontWeight: FontWeight.w500,
           color: accent ? AppColors.primary : AppColors.textPrimary,
         ),
@@ -866,7 +901,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           padding: const EdgeInsets.fromLTRB(
             AppSpacing.screenPadding, 24, AppSpacing.screenPadding, 16,
           ),
-          child: Text('Messages', style: theme.textTheme.headlineSmall),
+          child: Text('Messages', style: theme.textTheme.headlineSmall?.copyWith(fontSize: 26)),
         ),
         Expanded(
           child: acceptedConnections.isEmpty
@@ -884,14 +919,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         const SizedBox(height: 16),
                         Text(
                           'No conversations yet',
-                          style: theme.textTheme.bodyMedium?.copyWith(
+                          style: GoogleFonts.sora(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w500,
                             color: AppColors.textSecondary,
                           ),
                         ),
-                        const SizedBox(height: 4),
+                        const SizedBox(height: 6),
                         Text(
                           'Connect with people to start chatting',
-                          style: theme.textTheme.bodySmall,
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: AppColors.textTertiary,
+                          ),
                         ),
                       ],
                     ),
@@ -924,70 +964,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  // ── Profile tab ────────────────────────────────────────────────────────
+  // Profile tab is now handled by EditProfileContent widget.
 
-  Widget _buildProfileContent(ThemeData theme) {
-    return Column(
-      key: const ValueKey('profile'),
+  // ── Developer tab ──────────────────────────────────────────────────────
+
+  Widget _buildDeveloperContent() {
+    return ListView(
+      key: const ValueKey('developer'),
+      padding: const EdgeInsets.only(top: 24, bottom: 120),
       children: [
-        const Spacer(flex: 2),
-        // Profile picture
-        Center(
-          child: Container(
-            width: 100,
-            height: 100,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              border: Border.all(color: AppColors.border, width: 2),
-            ),
-            child: ClipOval(
-              child: widget.userPhotoUrl != null
-                  ? Image.network(
-                      widget.userPhotoUrl!,
-                      width: 100,
-                      height: 100,
-                      fit: BoxFit.cover,
-                    )
-                  : Container(
-                      color: AppColors.surfaceLightBlue,
-                      alignment: Alignment.center,
-                      child: Text(
-                        _firstName.isNotEmpty
-                            ? _firstName[0].toUpperCase()
-                            : '?',
-                        style: const TextStyle(
-                          fontSize: 36,
-                          fontWeight: FontWeight.w700,
-                          color: AppColors.primary,
-                        ),
-                      ),
-                    ),
-            ),
-          ),
-        ),
-        const SizedBox(height: 16),
-        // Name
-        Text(
-          widget.displayName,
-          style: theme.textTheme.titleMedium,
-          textAlign: TextAlign.center,
-        ),
-        const Spacer(flex: 2),
-        // Sign Out button
-        Padding(
-          padding:
-              const EdgeInsets.symmetric(horizontal: AppSpacing.screenPadding),
-          child: FilledButton(
-            onPressed: widget.onSignOut,
-            style: FilledButton.styleFrom(
-              backgroundColor: AppColors.surfaceLightBlue,
-              foregroundColor: AppColors.textPrimary,
-            ),
-            child: const Text('Sign Out'),
-          ),
-        ),
-        const SizedBox(height: 12),
-        // Fresh Start button
         Padding(
           padding:
               const EdgeInsets.symmetric(horizontal: AppSpacing.screenPadding),
@@ -1010,7 +995,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
         ),
         const SizedBox(height: 12),
-        // Delete Account button
         Padding(
           padding:
               const EdgeInsets.symmetric(horizontal: AppSpacing.screenPadding),
@@ -1032,7 +1016,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 : const Text('Delete Account'),
           ),
         ),
-        const SizedBox(height: 120),
       ],
     );
   }
@@ -1067,11 +1050,15 @@ class _ConnectionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final avatarColor = isAnonymous
+        ? _anonColor(conn.connectionId)
+        : AppColors.surfaceLightBlue;
+
     return GestureDetector(
       onTap: onTap,
       behavior: HitTestBehavior.opaque,
       child: Container(
-        padding: const EdgeInsets.all(14),
+        padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           color: AppColors.surfaceGray,
           borderRadius: BorderRadius.circular(AppRadius.card),
@@ -1081,23 +1068,23 @@ class _ConnectionCard extends StatelessWidget {
           children: [
             // Avatar
             Container(
-              width: 46,
-              height: 46,
+              width: 52,
+              height: 52,
               decoration: BoxDecoration(
-                color: AppColors.surfaceLightBlue,
-                borderRadius: BorderRadius.circular(14),
+                color: avatarColor,
+                borderRadius: BorderRadius.circular(16),
               ),
               alignment: Alignment.center,
               child: Text(
                 peerInitials,
                 style: TextStyle(
-                  fontSize: isAnonymous ? 24 : 16,
+                  fontSize: isAnonymous ? 26 : 18,
                   fontWeight: FontWeight.w700,
-                  color: AppColors.textPrimary,
+                  color: Colors.white,
                 ),
               ),
             ),
-            const SizedBox(width: 14),
+            const SizedBox(width: 16),
             // Info
             Expanded(
               child: Column(
@@ -1106,17 +1093,17 @@ class _ConnectionCard extends StatelessWidget {
                   Text(
                     peerName,
                     style: GoogleFonts.sora(
-                      fontSize: 14,
+                      fontSize: 16,
                       fontWeight: FontWeight.w600,
                       color: AppColors.textPrimary,
                     ),
                     overflow: TextOverflow.ellipsis,
                   ),
-                  const SizedBox(height: 4),
+                  const SizedBox(height: 6),
                   Text(
                     '${conn.matchPercentage.toStringAsFixed(0)}% match',
                     style: const TextStyle(
-                      fontSize: 12,
+                      fontSize: 13,
                       color: AppColors.textSecondary,
                     ),
                   ),
@@ -1129,15 +1116,15 @@ class _ConnectionCard extends StatelessWidget {
               GestureDetector(
                 onTap: onAccept,
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
                   decoration: BoxDecoration(
                     color: AppColors.primary,
-                    borderRadius: BorderRadius.circular(8),
+                    borderRadius: BorderRadius.circular(10),
                   ),
                   child: Text(
                     'Accept',
                     style: GoogleFonts.sora(
-                      fontSize: 12,
+                      fontSize: 13,
                       fontWeight: FontWeight.w600,
                       color: AppColors.onPrimary,
                     ),
@@ -1151,8 +1138,8 @@ class _ConnectionCard extends StatelessWidget {
               GestureDetector(
                 onTap: onChat,
                 child: Container(
-                  width: 38,
-                  height: 38,
+                  width: 42,
+                  height: 42,
                   decoration: const BoxDecoration(
                     color: AppColors.primary,
                     shape: BoxShape.circle,
@@ -1160,7 +1147,7 @@ class _ConnectionCard extends StatelessWidget {
                   alignment: Alignment.center,
                   child: const Icon(
                     Icons.chat_bubble_rounded,
-                    size: 18,
+                    size: 20,
                     color: AppColors.onPrimary,
                   ),
                 ),
@@ -1198,29 +1185,29 @@ class _ChatListTile extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.symmetric(
           horizontal: AppSpacing.screenPadding,
-          vertical: 14,
+          vertical: 16,
         ),
         child: Row(
           children: [
             // Avatar
             Container(
-              width: 46,
-              height: 46,
+              width: 52,
+              height: 52,
               decoration: BoxDecoration(
                 color: AppColors.surfaceLightBlue,
-                borderRadius: BorderRadius.circular(14),
+                borderRadius: BorderRadius.circular(16),
               ),
               alignment: Alignment.center,
               child: Text(
                 initials,
                 style: const TextStyle(
-                  fontSize: 16,
+                  fontSize: 18,
                   fontWeight: FontWeight.w700,
                   color: AppColors.textPrimary,
                 ),
               ),
             ),
-            const SizedBox(width: 14),
+            const SizedBox(width: 16),
             // Name + preview
             Expanded(
               child: Column(
@@ -1229,16 +1216,16 @@ class _ChatListTile extends StatelessWidget {
                   Text(
                     name,
                     style: GoogleFonts.sora(
-                      fontSize: 14,
+                      fontSize: 16,
                       fontWeight: FontWeight.w600,
                       color: AppColors.textPrimary,
                     ),
                   ),
-                  const SizedBox(height: 3),
+                  const SizedBox(height: 4),
                   Text(
                     preview,
                     style: const TextStyle(
-                      fontSize: 13,
+                      fontSize: 14,
                       color: AppColors.textSecondary,
                     ),
                     maxLines: 1,
@@ -1291,8 +1278,8 @@ class _GlassNavBar extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
               _NavBarItem(
-                icon: Icons.dashboard_rounded,
-                label: 'Dashboard',
+                icon: Icons.explore_rounded,
+                label: 'Discover',
                 isSelected: selectedIndex == 0,
                 onTap: () => onTap(0),
               ),
@@ -1307,6 +1294,12 @@ class _GlassNavBar extends StatelessWidget {
                 label: 'Profile',
                 isSelected: selectedIndex == 2,
                 onTap: () => onTap(2),
+              ),
+              _NavBarItem(
+                icon: Icons.code_rounded,
+                label: 'Dev',
+                isSelected: selectedIndex == 3,
+                onTap: () => onTap(3),
               ),
             ],
           ),
@@ -1335,7 +1328,7 @@ class _NavBarItem extends StatelessWidget {
       onTap: onTap,
       behavior: HitTestBehavior.opaque,
       child: SizedBox(
-        width: 72,
+        width: 64,
         height: 68,
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -1369,7 +1362,7 @@ class _SkeletonCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: AppColors.surfaceGray,
         borderRadius: BorderRadius.circular(AppRadius.card),
@@ -1379,33 +1372,33 @@ class _SkeletonCard extends StatelessWidget {
         children: [
           // Avatar skeleton
           Container(
-            width: 46,
-            height: 46,
+            width: 52,
+            height: 52,
             decoration: BoxDecoration(
               color: AppColors.surfaceLightBlue,
-              borderRadius: BorderRadius.circular(14),
+              borderRadius: BorderRadius.circular(16),
             ),
           ),
-          const SizedBox(width: 14),
+          const SizedBox(width: 16),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Container(
-                  width: 120,
-                  height: 14,
+                  width: 130,
+                  height: 16,
                   decoration: BoxDecoration(
                     color: AppColors.surfaceLightBlue,
-                    borderRadius: BorderRadius.circular(7),
+                    borderRadius: BorderRadius.circular(8),
                   ),
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 10),
                 Container(
-                  width: 80,
-                  height: 10,
+                  width: 90,
+                  height: 12,
                   decoration: BoxDecoration(
                     color: AppColors.surfaceLightBlue.withValues(alpha: 0.5),
-                    borderRadius: BorderRadius.circular(5),
+                    borderRadius: BorderRadius.circular(6),
                   ),
                 ),
               ],
@@ -1432,62 +1425,119 @@ class _StatusBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      decoration: BoxDecoration(
-        color: isScanning
-            ? AppColors.primary.withValues(alpha: 0.08)
-            : AppColors.surfaceGray,
-        borderRadius: BorderRadius.circular(AppRadius.card),
-        border: Border.all(
-          color: isScanning
-              ? AppColors.primary.withValues(alpha: 0.2)
-              : AppColors.border,
-          width: 0.5,
+    final bgColor = isScanning
+        ? AppColors.primary.withValues(alpha: 0.08)
+        : AppColors.surfaceGray;
+    final borderColor = isScanning
+        ? AppColors.primary.withValues(alpha: 0.2)
+        : AppColors.border;
+
+    // Semicircle colors: inner = lightest, outer = subtler
+    final innerCircle = isScanning
+        ? AppColors.primary.withValues(alpha: 0.10)
+        : AppColors.surfaceLightBlue.withValues(alpha: 0.5);
+    final outerCircle = isScanning
+        ? AppColors.primary.withValues(alpha: 0.05)
+        : AppColors.surfaceLightBlue.withValues(alpha: 0.25);
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(AppRadius.card),
+      child: Container(
+        decoration: BoxDecoration(
+          color: bgColor,
+          borderRadius: BorderRadius.circular(AppRadius.card),
+          border: Border.all(color: borderColor, width: 0.5),
         ),
-      ),
-      child: Row(
-        children: [
-          Icon(
-            isScanning ? Icons.bluetooth_searching : Icons.bluetooth_disabled,
-            size: 20,
-            color: isScanning ? AppColors.primary : AppColors.textTertiary,
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              message,
-              style: theme.textTheme.bodyMedium?.copyWith(
-                fontSize: 14,
-                color: isScanning
-                    ? AppColors.textPrimary
-                    : AppColors.textSecondary,
-              ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-          const SizedBox(width: 14),
-          GestureDetector(
-            onTap: onToggle,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              decoration: BoxDecoration(
-                color: AppColors.primary.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Text(
-                isScanning ? 'Stop' : 'Scan',
-                style: const TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.primary,
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            // Concentric semicircles
+            Positioned(
+              bottom: -160,
+              left: 0,
+              right: 0,
+              child: Center(
+                child: Container(
+                  width: 264,
+                  height: 264,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: outerCircle,
+                  ),
                 ),
               ),
             ),
-          ),
-        ],
+            Positioned(
+              bottom: -118,
+              left: 0,
+              right: 0,
+              child: Center(
+                child: Container(
+                  width: 180,
+                  height: 180,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: innerCircle,
+                  ),
+                ),
+              ),
+            ),
+            // Content
+            Padding(
+              padding: const EdgeInsets.all(18),
+              child: Row(
+                children: [
+                  Icon(
+                    isScanning
+                        ? Icons.bluetooth_searching
+                        : Icons.bluetooth_disabled,
+                    size: 24,
+                    color: isScanning
+                        ? AppColors.primary
+                        : AppColors.textTertiary,
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Text(
+                      isScanning ? 'Live' : 'Idle',
+                      style: GoogleFonts.sora(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: isScanning
+                            ? AppColors.textPrimary
+                            : AppColors.textSecondary,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  GestureDetector(
+                    onTap: onToggle,
+                    child: Container(
+                      width: 42,
+                      height: 42,
+                      decoration: BoxDecoration(
+                        color: isScanning
+                            ? AppColors.primary
+                            : AppColors.surfaceLightBlue,
+                        shape: BoxShape.circle,
+                      ),
+                      alignment: Alignment.center,
+                      child: Icon(
+                        isScanning
+                            ? Icons.stop_rounded
+                            : Icons.play_arrow_rounded,
+                        size: 22,
+                        color: isScanning
+                            ? AppColors.onPrimary
+                            : AppColors.textPrimary,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

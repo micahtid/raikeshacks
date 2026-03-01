@@ -149,16 +149,25 @@ class _AuthGateState extends State<AuthGate> {
   Future<void> _handleSignIn() async {
     try {
       final account = await _googleSignIn.signIn();
-      if (account != null && !_onboardingComplete) {
-        final prefs = await SharedPreferences.getInstance();
-        final uid = prefs.getString('student_uid');
-        if (uid == null || uid.isEmpty) {
-          await _tryRecoverProfile(account.email, prefs);
-          if (mounted) setState(() {});
-        }
+      if (account == null) return;
+
+      // Show loading while we check if user already completed onboarding,
+      // so the onboarding screen doesn't flash briefly.
+      if (mounted) setState(() => _isLoading = true);
+
+      final prefs = await SharedPreferences.getInstance();
+      _storedUid = prefs.getString('student_uid');
+      if (_storedUid != null && _storedUid!.isNotEmpty) {
+        _onboardingComplete = true;
+        await _initServices();
+      } else {
+        await _tryRecoverProfile(account.email, prefs);
       }
+
+      if (mounted) setState(() => _isLoading = false);
     } catch (e) {
       if (mounted) {
+        setState(() => _isLoading = false);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Sign in failed: $e')),
         );

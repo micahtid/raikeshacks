@@ -64,6 +64,27 @@ class BackendService {
     return null;
   }
 
+  /// Update a student profile (partial update). Returns updated profile.
+  static Future<Map<String, dynamic>?> updateStudent(
+    String uid,
+    Map<String, dynamic> data,
+  ) async {
+    final uri = Uri.parse('$_baseUrl/students/$uid');
+    try {
+      final response = await http.put(
+        uri,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode(data),
+      );
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        return jsonDecode(response.body) as Map<String, dynamic>;
+      }
+    } catch (e) {
+      debugPrint('[knkt] updateStudent failed: $e');
+    }
+    return null;
+  }
+
   /// Delete a student profile by uid.
   static Future<bool> deleteStudent(String uid) async {
     final uri = Uri.parse('$_baseUrl/students/$uid');
