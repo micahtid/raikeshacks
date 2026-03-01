@@ -33,10 +33,68 @@ class ConnectionService extends ChangeNotifier {
     if (myUid == null) return;
 
     await refreshConnections();
+    _injectMockData();
     _pollTimer = Timer.periodic(
       const Duration(seconds: 20),
       (_) => refreshConnections(),
     );
+  }
+
+  /// Inject one mock connected user for testing purposes.
+  void _injectMockData() {
+    if (myUid == null) return;
+    const mockUid = 'mock_user_alex_001';
+    final connId = _makeConnectionId(myUid!, mockUid);
+
+    if (!connections.containsKey(connId)) {
+      connections[connId] = ConnectionModel(
+        connectionId: connId,
+        uid1: myUid!.compareTo(mockUid) < 0 ? myUid! : mockUid,
+        uid2: myUid!.compareTo(mockUid) < 0 ? mockUid : myUid!,
+        uid1Accepted: true,
+        uid2Accepted: true,
+        matchPercentage: 87,
+        uid1Summary: 'Alex is building an AI-powered study tool and needs help with backend development. Your ML skills complement their frontend expertise perfectly.',
+        uid2Summary: 'A great match for your project — they have strong backend and ML skills that could accelerate your MVP.',
+        createdAt: DateTime.now().subtract(const Duration(hours: 2)).toIso8601String(),
+      );
+
+      peerProfiles[mockUid] = {
+        'uid': mockUid,
+        'identity': {
+          'full_name': 'Alex Chen',
+          'email': 'alex.chen@example.com',
+          'profile_photo_url': null,
+          'university': 'Stanford University',
+          'graduation_year': 2026,
+          'major': ['Computer Science'],
+          'minor': ['Design'],
+        },
+        'focus_areas': ['startup', 'side_project'],
+        'project': {
+          'one_liner': 'AI-powered study assistant for college students',
+          'stage': 'mvp',
+          'industry': ['EdTech', 'AI/ML'],
+        },
+        'skills': {
+          'possessed': [
+            {'name': 'React', 'source': 'resume'},
+            {'name': 'TypeScript', 'source': 'resume'},
+            {'name': 'Figma', 'source': 'questionnaire'},
+            {'name': 'UI/UX Design', 'source': 'questionnaire'},
+          ],
+          'needed': [
+            {'name': 'Python', 'priority': 'must_have'},
+            {'name': 'Machine Learning', 'priority': 'must_have'},
+            {'name': 'Backend Development', 'priority': 'nice_to_have'},
+          ],
+        },
+      };
+
+      // Mark mock user as nearby so they show in Connected section
+      nearbyUids.add(mockUid);
+      notifyListeners();
+    }
   }
 
   /// Called when a peer UID is received via Bluetooth.

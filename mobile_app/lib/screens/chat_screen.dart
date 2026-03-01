@@ -23,6 +23,7 @@ class ChatScreen extends StatefulWidget {
   final String peerInitials;
   final String roomId;
   final String myUid;
+  final VoidCallback? onAvatarTap;
 
   const ChatScreen({
     super.key,
@@ -30,6 +31,7 @@ class ChatScreen extends StatefulWidget {
     required this.peerInitials,
     required this.roomId,
     required this.myUid,
+    this.onAvatarTap,
   });
 
   @override
@@ -136,6 +138,7 @@ class _ChatScreenState extends State<ChatScreen> {
               name: widget.peerName,
               initials: widget.peerInitials,
               onBack: () => Navigator.pop(context),
+              onAvatarTap: widget.onAvatarTap,
             ),
             const Divider(height: 0.5),
             // ── Messages ──
@@ -178,11 +181,13 @@ class _ChatTopBar extends StatelessWidget {
   final String name;
   final String initials;
   final VoidCallback onBack;
+  final VoidCallback? onAvatarTap;
 
   const _ChatTopBar({
     required this.name,
     required this.initials,
     required this.onBack,
+    this.onAvatarTap,
   });
 
   @override
@@ -204,20 +209,23 @@ class _ChatTopBar extends StatelessWidget {
           ),
           const SizedBox(width: 4),
           // Avatar
-          Container(
-            width: 36,
-            height: 36,
-            decoration: BoxDecoration(
-              color: AppColors.surfaceLightBlue,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            alignment: Alignment.center,
-            child: Text(
-              initials,
-              style: const TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w700,
-                color: AppColors.primary,
+          GestureDetector(
+            onTap: onAvatarTap,
+            child: Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: AppColors.surfaceLightBlue,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              alignment: Alignment.center,
+              child: Text(
+                initials,
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.primary,
+                ),
               ),
             ),
           ),

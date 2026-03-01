@@ -75,6 +75,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
     if (mounted) setState(() => _isScanning = false);
   }
 
+  Future<void> _refreshDashboard() async {
+    await _connSvc.refreshConnections();
+  }
+
   Future<void> _clearData() async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -243,6 +247,52 @@ class _DashboardScreenState extends State<DashboardScreen> {
   /// Whether to show emoji avatar (anonymous) vs initials.
   bool _isAnonymous(ConnectionModel conn) => !conn.isComplete;
 
+  /// Get tags for a connection peer (focus areas, project stage, etc.)
+  List<String> _peerTags(ConnectionModel conn) {
+    final peerUid = conn.otherUid(_connSvc.myUid ?? '');
+    final profile = _connSvc.peerProfiles[peerUid];
+    if (profile == null) return [];
+    final tags = <String>[];
+    // Focus areas
+    final focusAreas = profile['focus_areas'] as List?;
+    if (focusAreas != null) {
+      for (final f in focusAreas) {
+        final s = f.toString();
+        tags.add(_focusLabel(s));
+      }
+    }
+    // Project stage
+    final project = profile['project'] as Map<String, dynamic>?;
+    if (project != null) {
+      final stage = project['stage'] as String?;
+      if (stage != null && stage.isNotEmpty) {
+        tags.add(_stageLabel(stage));
+      }
+    }
+    return tags;
+  }
+
+  static String _focusLabel(String raw) {
+    switch (raw) {
+      case 'startup': return 'Startup';
+      case 'research': return 'Research';
+      case 'side_project': return 'Side Project';
+      case 'open_source': return 'Open Source';
+      case 'looking': return 'Opportunities';
+      default: return raw;
+    }
+  }
+
+  static String _stageLabel(String raw) {
+    switch (raw) {
+      case 'idea': return 'Idea';
+      case 'mvp': return 'MVP';
+      case 'launched': return 'Launched';
+      case 'scaling': return 'Scaling';
+      default: return raw;
+    }
+  }
+
   String _connectionRoomId(ConnectionModel conn) {
     final uids = [conn.uid1, conn.uid2]..sort();
     return '${uids[0]}_${uids[1]}';
@@ -257,6 +307,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
           peerInitials: _peerInitials(conn),
           roomId: _connectionRoomId(conn),
           myUid: _connSvc.myUid ?? '',
+          onAvatarTap: conn.isComplete
+              ? () => _showFullProfileSheet(conn)
+              : null,
         ),
       ),
     );
@@ -371,46 +424,51 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final connected = _connSvc.connectedNearby;
     final pending = _connSvc.pendingRequests;
 
-    return ListView(
-      key: const ValueKey('dashboard'),
-      padding: const EdgeInsets.only(bottom: 100),
-      children: [
-        // Welcome header
-        Padding(
-          padding: const EdgeInsets.fromLTRB(
-            AppSpacing.screenPadding, 24, AppSpacing.screenPadding, 0,
-          ),
-          child: Text(
-            'Welcome back, $_firstName',
-            style: theme.textTheme.headlineSmall,
-          ),
-        ),
-        // Status banner
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-          child: _StatusBanner(
-            message: _svc.statusMessage,
-            isScanning: _isScanning,
-            onToggle: _isScanning ? _stopScanning : _startScanning,
-          ),
-        ),
-        // ── Skeleton loader for BT-connected, API-loading peers ──
-        if (_connSvc.loadingPeerUids.isNotEmpty)
-          const Padding(
-            padding: EdgeInsets.fromLTRB(
-              AppSpacing.screenPadding, 20, AppSpacing.screenPadding, 10,
+    return RefreshIndicator(
+      onRefresh: _refreshDashboard,
+      color: AppColors.primary,
+      child: ListView(
+        key: const ValueKey('dashboard'),
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.only(bottom: 100),
+        children: [
+          // Welcome header
+          Padding(
+            padding: const EdgeInsets.fromLTRB(
+              AppSpacing.screenPadding, 24, AppSpacing.screenPadding, 0,
             ),
-            child: _SkeletonCard(),
+            child: Text(
+              'Welcome back, $_firstName',
+              style: theme.textTheme.headlineSmall,
+            ),
           ),
-        // ── Profile card sections ──
-        _buildConnectionSection(theme, 'Connected', connected, false),
-        _buildConnectionSection(theme, 'Requests', pending, true),
-        const SizedBox(height: 20),
-      ],
+          // Status banner
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+            child: _StatusBanner(
+              message: _svc.statusMessage,
+              isScanning: _isScanning,
+              onToggle: _isScanning ? _stopScanning : _startScanning,
+            ),
+          ),
+          // ── Skeleton loader for BT-connected, API-loading peers ──
+          if (_connSvc.loadingPeerUids.isNotEmpty)
+            const Padding(
+              padding: EdgeInsets.fromLTRB(
+                AppSpacing.screenPadding, 20, AppSpacing.screenPadding, 10,
+              ),
+              child: _SkeletonCard(),
+            ),
+          // ── Profile card sections ──
+          _buildConnectionSection(theme, 'Connected', connected, false),
+          _buildConnectionSection(theme, 'Requests', pending, true),
+          const SizedBox(height: 20),
+        ],
+      ),
     );
   }
 
-  // ── Profile bottom sheet ──────────────────────────────────────────────
+  // ── Profile bottom sheet (connection sheet) ─────────────────────────────
 
   void _showProfileSheet(ConnectionModel conn) {
     final myUid = _connSvc.myUid ?? '';
@@ -420,6 +478,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final iAccepted = conn.hasAccepted(myUid);
     final isComplete = conn.isComplete;
     final isAnon = _isAnonymous(conn);
+    final tags = _peerTags(conn);
 
     showModalBottomSheet(
       context: context,
@@ -465,21 +524,27 @@ class _DashboardScreenState extends State<DashboardScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // Avatar
-              Container(
-                width: 64,
-                height: 64,
-                decoration: BoxDecoration(
-                  color: AppColors.surfaceLightBlue,
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                alignment: Alignment.center,
-                child: Text(
-                  initials,
-                  style: TextStyle(
-                    fontSize: isAnon ? 32 : 22,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.textPrimary,
+              // Avatar — tap to see full profile when revealed
+              GestureDetector(
+                onTap: isComplete ? () {
+                  Navigator.pop(ctx);
+                  _showFullProfileSheet(conn);
+                } : null,
+                child: Container(
+                  width: 64,
+                  height: 64,
+                  decoration: BoxDecoration(
+                    color: AppColors.surfaceLightBlue,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  alignment: Alignment.center,
+                  child: Text(
+                    initials,
+                    style: TextStyle(
+                      fontSize: isAnon ? 32 : 22,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.textPrimary,
+                    ),
                   ),
                 ),
               ),
@@ -494,15 +559,37 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ),
               ),
               const SizedBox(height: 8),
-              // Match percentage
-              Text(
-                '${conn.matchPercentage.toStringAsFixed(0)}% match',
-                style: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.primary,
+              // Tags instead of match percentage
+              if (tags.isNotEmpty)
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  alignment: WrapAlignment.center,
+                  children: tags.map((tag) => Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: AppColors.primary.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      tag,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                        color: AppColors.primary,
+                      ),
+                    ),
+                  )).toList(),
+                )
+              else
+                Text(
+                  '${conn.matchPercentage.toStringAsFixed(0)}% match',
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.primary,
+                  ),
                 ),
-              ),
               const SizedBox(height: 16),
               // Summary (from Gemini)
               if (summary != null && summary.isNotEmpty)
@@ -545,6 +632,224 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
         );
       },
+    );
+  }
+
+  // ── Full profile sheet (all onboarding info) ────────────────────────────
+
+  void _showFullProfileSheet(ConnectionModel conn) {
+    final peerUid = conn.otherUid(_connSvc.myUid ?? '');
+    final profile = _connSvc.peerProfiles[peerUid];
+    if (profile == null) return;
+
+    final identity = profile['identity'] as Map<String, dynamic>? ?? {};
+    final name = identity['full_name'] as String? ?? 'Unknown';
+    final university = identity['university'] as String? ?? '';
+    final gradYear = identity['graduation_year'];
+    final majors = (identity['major'] as List?)?.cast<String>() ?? [];
+    final minors = (identity['minor'] as List?)?.cast<String>() ?? [];
+    final focusAreas = (profile['focus_areas'] as List?)?.cast<String>() ?? [];
+    final project = profile['project'] as Map<String, dynamic>? ?? {};
+    final oneLiner = project['one_liner'] as String?;
+    final stage = project['stage'] as String?;
+    final industries = (project['industry'] as List?)?.cast<String>() ?? [];
+    final skills = profile['skills'] as Map<String, dynamic>? ?? {};
+    final possessed = (skills['possessed'] as List?)
+        ?.map((s) => (s as Map<String, dynamic>)['name'] as String? ?? '')
+        .where((s) => s.isNotEmpty)
+        .toList() ?? [];
+    final needed = (skills['needed'] as List?)
+        ?.map((s) => (s as Map<String, dynamic>)['name'] as String? ?? '')
+        .where((s) => s.isNotEmpty)
+        .toList() ?? [];
+
+    final initials = _peerInitials(conn);
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (ctx) {
+        return DraggableScrollableSheet(
+          initialChildSize: 0.7,
+          minChildSize: 0.4,
+          maxChildSize: 0.9,
+          builder: (_, scrollController) {
+            return Container(
+              decoration: BoxDecoration(
+                color: AppColors.surfaceGray,
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+                border: Border.all(color: AppColors.border, width: 0.5),
+              ),
+              child: ListView(
+                controller: scrollController,
+                padding: const EdgeInsets.all(24),
+                children: [
+                  // Handle
+                  Center(
+                    child: Container(
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: AppColors.textTertiary,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  // Avatar + Name
+                  Center(
+                    child: Container(
+                      width: 72,
+                      height: 72,
+                      decoration: BoxDecoration(
+                        color: AppColors.surfaceLightBlue,
+                        borderRadius: BorderRadius.circular(22),
+                      ),
+                      alignment: Alignment.center,
+                      child: Text(
+                        initials,
+                        style: const TextStyle(
+                          fontSize: 26,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Center(
+                    child: Text(
+                      name,
+                      style: GoogleFonts.sora(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                  ),
+                  if (university.isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Center(
+                      child: Text(
+                        '$university${gradYear != null ? ' \u2022 $gradYear' : ''}',
+                        style: const TextStyle(
+                          fontSize: 14,
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 24),
+                  // Majors / Minors
+                  if (majors.isNotEmpty)
+                    _profileSection('Major', majors.join(', ')),
+                  if (minors.isNotEmpty)
+                    _profileSection('Minor', minors.join(', ')),
+                  // Focus areas
+                  if (focusAreas.isNotEmpty) ...[
+                    _profileLabel('Focus'),
+                    const SizedBox(height: 6),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: focusAreas.map((f) => _tagChip(_focusLabel(f))).toList(),
+                    ),
+                    const SizedBox(height: 16),
+                  ],
+                  // Project
+                  if (oneLiner != null && oneLiner.isNotEmpty)
+                    _profileSection('Project', oneLiner),
+                  if (stage != null && stage.isNotEmpty)
+                    _profileSection('Stage', _stageLabel(stage)),
+                  if (industries.isNotEmpty) ...[
+                    _profileLabel('Industry'),
+                    const SizedBox(height: 6),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: industries.map((d) => _tagChip(d)).toList(),
+                    ),
+                    const SizedBox(height: 16),
+                  ],
+                  // Skills
+                  if (possessed.isNotEmpty) ...[
+                    _profileLabel('Skills'),
+                    const SizedBox(height: 6),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: possessed.map((s) => _tagChip(s)).toList(),
+                    ),
+                    const SizedBox(height: 16),
+                  ],
+                  if (needed.isNotEmpty) ...[
+                    _profileLabel('Looking for'),
+                    const SizedBox(height: 6),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: needed.map((s) => _tagChip(s, accent: true)).toList(),
+                    ),
+                    const SizedBox(height: 16),
+                  ],
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _profileSection(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _profileLabel(label),
+          const SizedBox(height: 4),
+          Text(
+            value,
+            style: const TextStyle(
+              fontSize: 14,
+              color: AppColors.textPrimary,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _profileLabel(String label) {
+    return Text(
+      label,
+      style: const TextStyle(
+        fontSize: 12,
+        fontWeight: FontWeight.w600,
+        color: AppColors.textTertiary,
+      ),
+    );
+  }
+
+  Widget _tagChip(String text, {bool accent = false}) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: accent
+            ? AppColors.primary.withValues(alpha: 0.15)
+            : AppColors.surfaceLightBlue,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Text(
+        text,
+        style: TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w500,
+          color: accent ? AppColors.primary : AppColors.textPrimary,
+        ),
+      ),
     );
   }
 
@@ -592,22 +897,27 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     ),
                   ),
                 )
-              : ListView.separated(
-                  padding: const EdgeInsets.fromLTRB(0, 0, 0, 100),
-                  itemCount: acceptedConnections.length,
-                  separatorBuilder: (context, index) => const Divider(
-                    height: 0.5,
-                    indent: AppSpacing.screenPadding + 56,
+              : RefreshIndicator(
+                  onRefresh: _refreshDashboard,
+                  color: AppColors.primary,
+                  child: ListView.separated(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    padding: const EdgeInsets.fromLTRB(0, 0, 0, 100),
+                    itemCount: acceptedConnections.length,
+                    separatorBuilder: (context, index) => const Divider(
+                      height: 0.5,
+                      indent: AppSpacing.screenPadding + 56,
+                    ),
+                    itemBuilder: (context, index) {
+                      final conn = acceptedConnections[index];
+                      return _ChatListTile(
+                        name: _peerName(conn),
+                        initials: _peerInitials(conn),
+                        summary: conn.summaryFor(_connSvc.myUid ?? ''),
+                        onTap: () => _pushChatScreen(conn),
+                      );
+                    },
                   ),
-                  itemBuilder: (context, index) {
-                    final conn = acceptedConnections[index];
-                    return _ChatListTile(
-                      name: _peerName(conn),
-                      initials: _peerInitials(conn),
-                      summary: conn.summaryFor(_connSvc.myUid ?? ''),
-                      onTap: () => _pushChatScreen(conn),
-                    );
-                  },
                 ),
         ),
       ],
