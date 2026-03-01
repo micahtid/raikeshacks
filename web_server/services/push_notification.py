@@ -1,77 +1,47 @@
-import base64
-import hashlib
 import json
 import os
-import time
 from typing import Optional
 
 import httpx
+from google.oauth2 import service_account
+from google.auth.transport.requests import Request
 
 from db import get_db
 
-# Cache for OAuth2 access token
-_token_cache: dict = {"token": None, "expires_at": 0}
+# FCM v1 API scope
+_SCOPES = ["https://www.googleapis.com/auth/firebase.messaging"]
+
+# Cached credentials object (auto-refreshes)
+_credentials = None
 
 
-def _get_service_account() -> Optional[dict]:
-    """Load Google service account credentials from env var."""
+def _get_credentials():
+    """Load and cache Google service account credentials from env var."""
+    global _credentials
+    if _credentials is not None:
+        return _credentials
+
     raw = os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON")
     if not raw:
         return None
-    return json.loads(raw)
 
-
-def _b64url(data: bytes) -> str:
-    """Base64url encode without padding."""
-    return base64.urlsafe_b64encode(data).rstrip(b"=").decode("ascii")
-
-
-def _sign_rs256(payload_bytes: bytes, private_key_pem: str) -> str:
-    """Sign a JWT using RS256 with Python's stdlib + cryptography (ships with httpx)."""
-    from cryptography.hazmat.primitives import hashes, serialization
-    from cryptography.hazmat.primitives.asymmetric import padding
-
-    key = serialization.load_pem_private_key(private_key_pem.encode(), password=None)
-    signature = key.sign(payload_bytes, padding.PKCS1v15(), hashes.SHA256())
-    return _b64url(signature)
-
-
-def _make_jwt(sa: dict) -> str:
-    """Create a signed JWT for Google OAuth2 token exchange."""
-    now = int(time.time())
-    header = _b64url(json.dumps({"alg": "RS256", "typ": "JWT"}).encode())
-    claims = _b64url(json.dumps({
-        "iss": sa["client_email"],
-        "sub": sa["client_email"],
-        "aud": "https://oauth2.googleapis.com/token",
-        "iat": now,
-        "exp": now + 3600,
-        "scope": "https://www.googleapis.com/auth/firebase.messaging",
-    }).encode())
-    signing_input = f"{header}.{claims}"
-    signature = _sign_rs256(signing_input.encode(), sa["private_key"])
-    return f"{signing_input}.{signature}"
-
-
-def _get_access_token(sa: dict) -> str:
-    """Sign a JWT and exchange it for an OAuth2 access token (cached)."""
-    now = time.time()
-    if _token_cache["token"] and _token_cache["expires_at"] > now + 60:
-        return _token_cache["token"]
-
-    signed_jwt = _make_jwt(sa)
-    resp = httpx.post(
-        "https://oauth2.googleapis.com/token",
-        data={
-            "grant_type": "urn:ietf:params:oauth:grant-type:jwt-bearer",
-            "assertion": signed_jwt,
-        },
+    sa_info = json.loads(raw)
+    _credentials = service_account.Credentials.from_service_account_info(
+        sa_info, scopes=_SCOPES
     )
-    resp.raise_for_status()
-    data = resp.json()
-    _token_cache["token"] = data["access_token"]
-    _token_cache["expires_at"] = now + data.get("expires_in", 3600)
-    return data["access_token"]
+    return _credentials
+
+
+def _get_access_token() -> Optional[str]:
+    """Get a valid access token, refreshing if needed."""
+    creds = _get_credentials()
+    if creds is None:
+        return None
+
+    if not creds.valid:
+        creds.refresh(Request())
+
+    return creds.token
 
 
 async def send_push_to_all(
@@ -86,17 +56,18 @@ async def send_push_to_all(
     """
     print(f"[FCM] send_push_to_all called: title={title!r}, body={body!r}")
 
-    sa = _get_service_account()
-    if not sa:
-        print("[FCM] ERROR: No service account — GOOGLE_SERVICE_ACCOUNT_JSON env var missing or empty")
+    access_token = _get_access_token()
+    if not access_token:
+        print("[FCM] ERROR: Could not get access token — GOOGLE_SERVICE_ACCOUNT_JSON env var missing or invalid")
         return {}
 
-    project_id = os.getenv("FIREBASE_PROJECT_ID") or sa.get("project_id")
+    creds = _get_credentials()
+    project_id = os.getenv("FIREBASE_PROJECT_ID") or creds.project_id
     if not project_id:
-        print("[FCM] ERROR: No project_id — FIREBASE_PROJECT_ID env var missing and not in SA JSON")
+        print("[FCM] ERROR: No project_id")
         return {}
 
-    print(f"[FCM] project_id={project_id}")
+    print(f"[FCM] project_id={project_id}, token={access_token[:20]}...")
 
     db = get_db()
     students = await db.student_profiles.find(
@@ -107,13 +78,6 @@ async def send_push_to_all(
     print(f"[FCM] Found {len(students)} student(s) with FCM tokens")
 
     results = {}
-    try:
-        access_token = _get_access_token(sa)
-        print(f"[FCM] Got access token: {access_token[:20]}...")
-    except Exception as e:
-        print(f"[FCM] ERROR: Failed to get access token: {e}")
-        return {}
-
     for student in students:
         fcm_token = student.get("fcm_token")
         uid = student.get("uid", "unknown")
@@ -173,12 +137,13 @@ async def send_push_notification(
     """
     print(f"[FCM] send_push_notification called: uid={uid}, title={title!r}")
 
-    sa = _get_service_account()
-    if not sa:
-        print("[FCM] ERROR: No service account")
+    access_token = _get_access_token()
+    if not access_token:
+        print("[FCM] ERROR: Could not get access token")
         return False
 
-    project_id = os.getenv("FIREBASE_PROJECT_ID") or sa.get("project_id")
+    creds = _get_credentials()
+    project_id = os.getenv("FIREBASE_PROJECT_ID") or creds.project_id
     if not project_id:
         print("[FCM] ERROR: No project_id")
         return False
@@ -190,7 +155,6 @@ async def send_push_notification(
         return False
 
     try:
-        access_token = _get_access_token(sa)
         message: dict = {
             "message": {
                 "token": student["fcm_token"],
