@@ -86,12 +86,18 @@ class ConnectionService extends ChangeNotifier {
     }
   }
 
-  /// Accept a connection.
+  /// Accept (or Connect) a connection.
   Future<void> acceptConnection(String connectionId) async {
     if (myUid == null) return;
     final updated = await BackendService.acceptConnection(connectionId, myUid!);
     if (updated != null) {
       connections[connectionId] = updated;
+      // When both accepted, ensure we have the peer's real profile for un-anonymize
+      if (updated.isComplete) {
+        final peerUid = updated.otherUid(myUid!);
+        peerProfiles.remove(peerUid); // force re-fetch for fresh data
+        await _ensurePeerProfile(peerUid);
+      }
       notifyListeners();
     }
   }
@@ -119,11 +125,28 @@ class ConnectionService extends ChangeNotifier {
     }).toList();
   }
 
-  /// Connections above threshold but not yet mutually accepted.
-  List<ConnectionModel> get pendingRequests {
+  /// Brand new discoveries: above threshold, neither user has connected yet.
+  List<ConnectionModel> get discoveredMatches {
     if (myUid == null) return [];
     return connections.values.where((c) {
-      return c.isAboveThreshold && !c.isComplete;
+      return c.isAboveThreshold && !c.uid1Accepted && !c.uid2Accepted;
+    }).toList();
+  }
+
+  /// I tapped Connect, waiting for the other user.
+  List<ConnectionModel> get sentRequests {
+    if (myUid == null) return [];
+    return connections.values.where((c) {
+      return c.isAboveThreshold && c.hasAccepted(myUid!) && !c.isComplete;
+    }).toList();
+  }
+
+  /// The other user connected, I haven't accepted yet.
+  List<ConnectionModel> get incomingRequests {
+    if (myUid == null) return [];
+    return connections.values.where((c) {
+      final otherUid = c.otherUid(myUid!);
+      return c.isAboveThreshold && !c.hasAccepted(myUid!) && c.hasAccepted(otherUid);
     }).toList();
   }
 
