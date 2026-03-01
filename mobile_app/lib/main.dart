@@ -7,6 +7,7 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'screens/dashboard_screen.dart';
 import 'screens/onboarding_screen.dart';
 import 'services/nearby_service.dart';
+import 'services/notification_service.dart';
 import 'theme.dart';
 
 void main() async {
@@ -38,6 +39,7 @@ class AuthGate extends StatefulWidget {
 class _AuthGateState extends State<AuthGate> {
   late final GoogleSignIn _googleSignIn;
   final NearbyService _nearbyService = NearbyService();
+  final NotificationService _notificationService = NotificationService();
   GoogleSignInAccount? _currentUser;
   bool _isLoading = true;
   bool _onboardingComplete = false;
@@ -45,6 +47,7 @@ class _AuthGateState extends State<AuthGate> {
   @override
   void initState() {
     super.initState();
+    _initNotifications();
     // On Android, google_sign_in uses the OAuth client registered in
     // Google Cloud Console (matched by package name + SHA-1) automatically.
     // clientId is only needed for iOS, macOS, and web.
@@ -60,6 +63,11 @@ class _AuthGateState extends State<AuthGate> {
       });
     });
     _trySignInSilently();
+  }
+
+  Future<void> _initNotifications() async {
+    await _notificationService.init();
+    _nearbyService.setNotificationService(_notificationService);
   }
 
   Future<void> _trySignInSilently() async {
