@@ -123,6 +123,14 @@ class ConnectionService extends ChangeNotifier {
     }
   }
 
+  /// Clear all in-memory state (used after "Fresh Start").
+  void clearLocalData() {
+    connections.clear();
+    peerProfiles.clear();
+    nearbyUids.clear();
+    notifyListeners();
+  }
+
   String _makeConnectionId(String a, String b) {
     final sorted = [a, b]..sort();
     return '${sorted[0]}_${sorted[1]}';

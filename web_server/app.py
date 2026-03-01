@@ -16,6 +16,7 @@ from models.student import (
     StudentUpdate,
     create_student,
     get_student,
+    get_student_by_email,
     update_student,
     delete_student,
 )
@@ -122,6 +123,38 @@ async def remove_student(uid: str):
     # Also clean up connections involving this user
     db = get_db()
     await db.connections.delete_many({"$or": [{"uid1": uid}, {"uid2": uid}]})
+
+
+@app.delete("/students/{uid}/data", status_code=204)
+async def clear_student_data(uid: str):
+    """Delete all connections, chat rooms, and messages for a user, but keep their profile."""
+    student = await get_student(uid)
+    if student is None:
+        raise HTTPException(status_code=404, detail="Student not found")
+
+    db = get_db()
+
+    # Find all chat rooms involving this user
+    rooms = await db.chat_rooms.find(
+        {"participant_uids": uid}, {"room_id": 1, "_id": 0}
+    ).to_list(None)
+    room_ids = [r["room_id"] for r in rooms]
+
+    # Delete messages in those rooms, then the rooms themselves
+    if room_ids:
+        await db.chat_messages.delete_many({"room_id": {"$in": room_ids}})
+        await db.chat_rooms.delete_many({"room_id": {"$in": room_ids}})
+
+    # Delete all connections involving this user
+    await db.connections.delete_many({"$or": [{"uid1": uid}, {"uid2": uid}]})
+
+
+@app.get("/students/by-email/{email}", response_model=StudentProfile)
+async def read_student_by_email(email: str):
+    student = await get_student_by_email(email)
+    if student is None:
+        raise HTTPException(status_code=404, detail="Student not found")
+    return student
 
 
 @app.get("/students/{uid}/matches", response_model=MatchResponse)

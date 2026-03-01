@@ -71,6 +71,32 @@ class BackendService {
     return response.statusCode >= 200 && response.statusCode < 300;
   }
 
+  /// Clear all connections and chat history for a user (keeps profile).
+  static Future<bool> clearUserData(String uid) async {
+    final uri = Uri.parse('$_baseUrl/students/$uid/data');
+    try {
+      final response = await http.delete(uri);
+      return response.statusCode >= 200 && response.statusCode < 300;
+    } catch (e) {
+      debugPrint('[knkt] clearUserData failed: $e');
+      return false;
+    }
+  }
+
+  /// Look up a student profile by email address.
+  static Future<Map<String, dynamic>?> getStudentByEmail(String email) async {
+    final uri = Uri.parse('$_baseUrl/students/by-email/$email');
+    try {
+      final response = await http.get(uri);
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        return jsonDecode(response.body) as Map<String, dynamic>;
+      }
+    } catch (e) {
+      debugPrint('[knkt] getStudentByEmail failed: $e');
+    }
+    return null;
+  }
+
   /// Register/update FCM token for a user.
   static Future<bool> updateFcmToken(String uid, String token) async {
     final uri = Uri.parse('$_baseUrl/students/$uid/fcm-token');

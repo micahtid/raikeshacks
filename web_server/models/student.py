@@ -184,6 +184,17 @@ async def update_student(uid: str, data: StudentUpdate) -> Optional[StudentProfi
     return StudentProfile(**result)
 
 
+async def get_student_by_email(email: str) -> Optional[StudentProfile]:
+    """Fetch a single student by email. Returns None if not found."""
+    db = get_db()
+    doc = await db.student_profiles.find_one(
+        {"identity.email": email}, {"_id": 0}
+    )
+    if doc is None:
+        return None
+    return StudentProfile(**doc)
+
+
 async def delete_student(uid: str) -> bool:
     """Delete a student by uid. Returns True if a document was removed."""
     db = get_db()

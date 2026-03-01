@@ -9,6 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'screens/dashboard_screen.dart';
 import 'screens/onboarding_screen.dart';
+import 'services/backend_service.dart';
 import 'services/connection_service.dart';
 import 'services/fcm_service.dart';
 import 'services/nearby_service.dart';
@@ -91,11 +92,32 @@ class _AuthGateState extends State<AuthGate> {
     if (_storedUid != null && _storedUid!.isNotEmpty) {
       _onboardingComplete = true;
       await _initServices();
+    } else if (_currentUser != null) {
+      // No stored UID but user is signed in — check if profile exists on backend
+      await _tryRecoverProfile(_currentUser!.email, prefs);
     }
     if (mounted) {
       setState(() {
         _isLoading = false;
       });
+    }
+  }
+
+  /// Look up an existing profile by email and restore the stored UID.
+  Future<void> _tryRecoverProfile(String email, SharedPreferences prefs) async {
+    try {
+      final profile = await BackendService.getStudentByEmail(email);
+      if (profile != null) {
+        final uid = profile['uid'] as String?;
+        if (uid != null && uid.isNotEmpty) {
+          await prefs.setString('student_uid', uid);
+          _storedUid = uid;
+          _onboardingComplete = true;
+          await _initServices();
+        }
+      }
+    } catch (e) {
+      debugPrint('[knkt] profile recovery failed: $e');
     }
   }
 
@@ -124,7 +146,15 @@ class _AuthGateState extends State<AuthGate> {
 
   Future<void> _handleSignIn() async {
     try {
-      await _googleSignIn.signIn();
+      final account = await _googleSignIn.signIn();
+      if (account != null && !_onboardingComplete) {
+        final prefs = await SharedPreferences.getInstance();
+        final uid = prefs.getString('student_uid');
+        if (uid == null || uid.isEmpty) {
+          await _tryRecoverProfile(account.email, prefs);
+          if (mounted) setState(() {});
+        }
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
