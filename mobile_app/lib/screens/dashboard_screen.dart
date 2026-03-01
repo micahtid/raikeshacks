@@ -1,10 +1,7 @@
-import 'dart:convert';
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/peer_device.dart';
@@ -49,56 +46,11 @@ const _mockUsers = [
   ),
   _MockUser(
     id: '2',
-    name: 'Jordan Kim',
-    focus: 'Research',
-    stage: 'Idea',
-    bio: 'PhD candidate exploring NLP for accessibility tools. Always down to brainstorm over coffee.',
-    score: 87,
-    initialState: _ConnectionState.incoming,
-  ),
-  _MockUser(
-    id: '3',
-    name: 'Sam Chen',
-    focus: 'Side Project',
-    stage: 'Launched',
-    bio: 'Shipped a habit-tracking app last month. Now iterating on retention and onboarding flows.',
-    score: 78,
-    initialState: _ConnectionState.pending,
-  ),
-  _MockUser(
-    id: '4',
-    name: 'Taylor Brooks',
-    focus: 'Open Source',
-    stage: 'Scaling',
-    bio: 'Maintaining a popular Dart testing library. Interested in dev-tooling and CI/CD pipelines.',
-    score: 74,
-    initialState: _ConnectionState.pending,
-  ),
-  _MockUser(
-    id: '5',
     name: 'Morgan Lee',
     focus: 'Startup',
     stage: 'Idea',
     bio: 'Exploring the intersection of AI and education. Former teacher turned indie hacker.',
     score: 85,
-    initialState: _ConnectionState.suggested,
-  ),
-  _MockUser(
-    id: '6',
-    name: 'Casey Patel',
-    focus: 'Side Project',
-    stage: 'MVP',
-    bio: 'Designing a local-first recipe app. Passionate about offline-capable mobile experiences.',
-    score: 69,
-    initialState: _ConnectionState.suggested,
-  ),
-  _MockUser(
-    id: '7',
-    name: 'Riley Nakamura',
-    focus: 'Research',
-    stage: 'Launched',
-    bio: 'Published a paper on mesh networking for rural connectivity. Building a proof-of-concept app.',
-    score: 81,
     initialState: _ConnectionState.suggested,
   ),
 ];
@@ -356,7 +308,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Widget _buildDashboardContent(ThemeData theme) {
-    final peers = _svc.discoveredPeers.values.toList();
+    // Convert Bluetooth peers to Discover cards
+    final btPeers = _svc.discoveredPeers.values.map((peer) {
+      final btId = 'bt_${peer.endpointId}';
+      _connectionStates.putIfAbsent(btId, () => _ConnectionState.suggested);
+      return _MockUser(
+        id: btId,
+        name: peer.name,
+        focus: 'Startup',
+        stage: 'Idea',
+        bio: 'Discovered nearby via Bluetooth.',
+        score: 75,
+        initialState: _ConnectionState.suggested,
+      );
+    }).toList();
 
     // Requests: incoming (not yet accepted)
     final requests = _mockUsers
@@ -368,12 +333,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
         .where((u) => _connectionStates[u.id] == _ConnectionState.connected)
         .toList();
 
-    // Discover: suggested + pending outgoing
-    final discover = _mockUsers.where((u) {
-      final s = _connectionStates[u.id]!;
-      return s == _ConnectionState.suggested ||
-          s == _ConnectionState.pending;
-    }).toList();
+    // Discover: suggested + pending + Bluetooth peers
+    final discover = [
+      ..._mockUsers.where((u) {
+        final s = _connectionStates[u.id]!;
+        return s == _ConnectionState.suggested ||
+            s == _ConnectionState.pending;
+      }),
+      ...btPeers,
+    ];
 
     return ListView(
       key: const ValueKey('dashboard'),
@@ -398,42 +366,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
             onToggle: _isScanning ? _stopScanning : _startScanning,
           ),
         ),
-        // Connected peer card (if any)
-        if (_svc.connectedEndpointId != null)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-            child: _ConnectedCard(
-              peerName: _svc.connectedPeerName ?? 'Peer',
-              receivedWord: _svc.receivedSecretWord,
-            ),
-          ),
-        // Nearby Bluetooth peers
-        if (peers.isNotEmpty) ...[
-          Padding(
-            padding: const EdgeInsets.fromLTRB(
-              AppSpacing.screenPadding, 20, AppSpacing.screenPadding, 8,
-            ),
-            child: Text(
-              'Nearby',
-              style: theme.textTheme.titleSmall?.copyWith(
-                color: AppColors.textTertiary,
-              ),
-            ),
-          ),
-          ...peers.map((peer) {
-            final isConnected = peer.endpointId == _svc.connectedEndpointId;
-            return Padding(
-              padding: const EdgeInsets.symmetric(
-                horizontal: AppSpacing.screenPadding,
-              ),
-              child: _PeerTile(
-                peer: peer,
-                isConnected: isConnected,
-                theme: theme,
-              ),
-            );
-          }),
-        ],
         // ── Profile card sections ──
         _buildSection(theme, 'Connected', connected),
         _buildSection(theme, 'Requests', requests),
@@ -931,12 +863,7 @@ class _ChatListTile extends StatelessWidget {
 
   static const _lastMessages = <String, String>{
     '1': 'We should collab sometime.',
-    '2': 'Sounds great, let me know!',
-    '3': 'Just shipped a new build.',
-    '4': 'PR is up for review.',
-    '5': 'Let me know if you want to chat about AI!',
-    '6': 'Offline-first is the way to go.',
-    '7': 'Mesh networking is wild stuff.',
+    '2': 'Let me know if you want to chat about AI!',
   };
 
   String get _initials {
@@ -1040,7 +967,7 @@ class _GlassNavBar extends StatelessWidget {
       child: BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 7, sigmaY: 7),
         child: Container(
-          height: 64,
+          height: 68,
           decoration: BoxDecoration(
             gradient: LinearGradient(
               begin: Alignment.topLeft,
@@ -1204,173 +1131,3 @@ class _StatusBanner extends StatelessWidget {
   }
 }
 
-// ── Connected card ────────────────────────────────────────────────────────
-
-class _ConnectedCard extends StatelessWidget {
-  final String peerName;
-  final String? receivedWord;
-
-  const _ConnectedCard({
-    required this.peerName,
-    this.receivedWord,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: AppColors.primary.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(AppRadius.card),
-        border:
-            Border.all(color: AppColors.primary.withValues(alpha: 0.2)),
-      ),
-      child: Row(
-        children: [
-          const Icon(Icons.handshake, size: 24, color: AppColors.primary),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Connected to $peerName',
-                  style: theme.textTheme.titleSmall?.copyWith(
-                    color: AppColors.primary,
-                  ),
-                ),
-                if (receivedWord != null)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 4),
-                    child: Text(
-                      'Similarity check in progress\u2026',
-                      style: theme.textTheme.bodySmall,
-                    ),
-                  )
-                else
-                  Padding(
-                    padding: const EdgeInsets.only(top: 4),
-                    child: Row(
-                      children: [
-                        const SizedBox(
-                          width: 12,
-                          height: 12,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          'Exchanging data\u2026',
-                          style: theme.textTheme.bodySmall,
-                        ),
-                      ],
-                    ),
-                  ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ── Peer tile ─────────────────────────────────────────────────────────────
-
-class _PeerTile extends StatelessWidget {
-  final PeerDevice peer;
-  final bool isConnected;
-  final ThemeData theme;
-
-  const _PeerTile({
-    required this.peer,
-    required this.isConnected,
-    required this.theme,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 4),
-      child: SizedBox(
-        height: 72,
-        child: Row(
-          children: [
-            // Avatar
-            Container(
-              width: AppSpacing.avatarSize,
-              height: AppSpacing.avatarSize,
-              decoration: BoxDecoration(
-                color: isConnected
-                    ? AppColors.primary
-                    : AppColors.surfaceLightBlue,
-                borderRadius: BorderRadius.circular(AppRadius.avatar),
-              ),
-              alignment: Alignment.center,
-              child: Text(
-                _initials(peer.name),
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700,
-                  color:
-                      isConnected ? AppColors.onPrimary : AppColors.primary,
-                ),
-              ),
-            ),
-            const SizedBox(width: 16),
-            // Name + subtitle
-            Expanded(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(peer.name, style: theme.textTheme.titleSmall),
-                  const SizedBox(height: 4),
-                  Text(
-                    isConnected ? 'Connected' : 'Nearby',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: isConnected
-                          ? AppColors.primary
-                          : AppColors.textSecondary,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ],
-              ),
-            ),
-            // Connection status badge
-            Container(
-              width: 36,
-              height: 36,
-              decoration: BoxDecoration(
-                color: isConnected
-                    ? AppColors.primary
-                    : AppColors.surfaceGray,
-                shape: BoxShape.circle,
-              ),
-              alignment: Alignment.center,
-              child: Icon(
-                isConnected
-                    ? Icons.bluetooth_connected
-                    : Icons.bluetooth,
-                size: 18,
-                color: isConnected
-                    ? AppColors.onPrimary
-                    : AppColors.textTertiary,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  String _initials(String name) {
-    final parts = name.trim().split(RegExp(r'\s+'));
-    if (parts.length >= 2) {
-      return '${parts[0][0]}${parts[1][0]}'.toUpperCase();
-    }
-    return name.isNotEmpty ? name[0].toUpperCase() : '?';
-  }
-}

@@ -88,6 +88,9 @@ ThemeData buildAppTheme() {
         fontWeight: FontWeight.w400,
         color: AppColors.textSecondary,
       ),
+      bodyLarge: textTheme.bodyLarge?.copyWith(
+        color: AppColors.textPrimary,
+      ),
       bodySmall: textTheme.bodySmall?.copyWith(
         fontSize: 12,
         fontWeight: FontWeight.w400,
@@ -155,7 +158,7 @@ ThemeData buildAppTheme() {
         fontWeight: FontWeight.w400,
         color: AppColors.textTertiary,
       ),
-      contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(AppRadius.card),
         borderSide: BorderSide.none,
