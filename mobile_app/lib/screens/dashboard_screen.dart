@@ -9,6 +9,7 @@ import '../services/backend_service.dart';
 import '../services/connection_service.dart';
 import '../services/nearby_service.dart';
 import '../theme.dart';
+import '../utils/anonymous_identity.dart';
 import 'chat_screen.dart';
 
 // ── Dashboard screen ─────────────────────────────────────────────────────────
@@ -212,7 +213,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
-  String _peerName(ConnectionModel conn) {
+  /// Real name from peer profile (used only when both accepted).
+  String _realPeerName(ConnectionModel conn) {
     final peerUid = conn.otherUid(_connSvc.myUid ?? '');
     final profile = _connSvc.peerProfiles[peerUid];
     if (profile != null) {
@@ -222,14 +224,24 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return 'Unknown';
   }
 
+  /// Display name: anonymous until both accept, then real name.
+  String _peerName(ConnectionModel conn) {
+    if (conn.isComplete) return _realPeerName(conn);
+    return anonymousName(conn.connectionId);
+  }
+
   String _peerInitials(ConnectionModel conn) {
-    final name = _peerName(conn);
+    if (!conn.isComplete) return anonymousEmoji(conn.connectionId);
+    final name = _realPeerName(conn);
     final parts = name.trim().split(RegExp(r'\s+'));
     if (parts.length >= 2) {
       return '${parts[0][0]}${parts[1][0]}'.toUpperCase();
     }
     return name.isNotEmpty ? name[0].toUpperCase() : '?';
   }
+
+  /// Whether to show emoji avatar (anonymous) vs initials.
+  bool _isAnonymous(ConnectionModel conn) => !conn.isComplete;
 
   String _connectionRoomId(ConnectionModel conn) {
     final uids = [conn.uid1, conn.uid2]..sort();
@@ -342,6 +354,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               peerName: _peerName(conn),
               peerInitials: _peerInitials(conn),
               myUid: _connSvc.myUid ?? '',
+              isAnonymous: _isAnonymous(conn),
               showAcceptButton: showAcceptButton && !conn.hasAccepted(_connSvc.myUid ?? ''),
               showChatButton: conn.isComplete,
               onTap: () => _showProfileSheet(conn),
@@ -381,6 +394,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
             onToggle: _isScanning ? _stopScanning : _startScanning,
           ),
         ),
+        // ── Skeleton loader for BT-connected, API-loading peers ──
+        if (_connSvc.loadingPeerUids.isNotEmpty)
+          const Padding(
+            padding: EdgeInsets.fromLTRB(
+              AppSpacing.screenPadding, 20, AppSpacing.screenPadding, 10,
+            ),
+            child: _SkeletonCard(),
+          ),
         // ── Profile card sections ──
         _buildConnectionSection(theme, 'Connected', connected, false),
         _buildConnectionSection(theme, 'Requests', pending, true),
@@ -398,6 +419,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final summary = conn.summaryFor(myUid);
     final iAccepted = conn.hasAccepted(myUid);
     final isComplete = conn.isComplete;
+    final isAnon = _isAnonymous(conn);
 
     showModalBottomSheet(
       context: context,
@@ -454,8 +476,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 alignment: Alignment.center,
                 child: Text(
                   initials,
-                  style: const TextStyle(
-                    fontSize: 22,
+                  style: TextStyle(
+                    fontSize: isAnon ? 32 : 22,
                     fontWeight: FontWeight.w700,
                     color: AppColors.textPrimary,
                   ),
@@ -713,6 +735,7 @@ class _ConnectionCard extends StatelessWidget {
   final String peerName;
   final String peerInitials;
   final String myUid;
+  final bool isAnonymous;
   final bool showAcceptButton;
   final bool showChatButton;
   final VoidCallback onTap;
@@ -724,6 +747,7 @@ class _ConnectionCard extends StatelessWidget {
     required this.peerName,
     required this.peerInitials,
     required this.myUid,
+    this.isAnonymous = false,
     required this.showAcceptButton,
     required this.showChatButton,
     required this.onTap,
@@ -756,8 +780,8 @@ class _ConnectionCard extends StatelessWidget {
               alignment: Alignment.center,
               child: Text(
                 peerInitials,
-                style: const TextStyle(
-                  fontSize: 16,
+                style: TextStyle(
+                  fontSize: isAnonymous ? 24 : 16,
                   fontWeight: FontWeight.w700,
                   color: AppColors.textPrimary,
                 ),
@@ -1022,6 +1046,62 @@ class _NavBarItem extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+// ── Skeleton loading card ──────────────────────────────────────────────────
+
+class _SkeletonCard extends StatelessWidget {
+  const _SkeletonCard();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceGray,
+        borderRadius: BorderRadius.circular(AppRadius.card),
+        border: Border.all(color: AppColors.border, width: 0.5),
+      ),
+      child: Row(
+        children: [
+          // Avatar skeleton
+          Container(
+            width: 46,
+            height: 46,
+            decoration: BoxDecoration(
+              color: AppColors.surfaceLightBlue,
+              borderRadius: BorderRadius.circular(14),
+            ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: 120,
+                  height: 14,
+                  decoration: BoxDecoration(
+                    color: AppColors.surfaceLightBlue,
+                    borderRadius: BorderRadius.circular(7),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Container(
+                  width: 80,
+                  height: 10,
+                  decoration: BoxDecoration(
+                    color: AppColors.surfaceLightBlue.withValues(alpha: 0.5),
+                    borderRadius: BorderRadius.circular(5),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

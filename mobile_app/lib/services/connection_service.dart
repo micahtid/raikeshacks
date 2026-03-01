@@ -18,6 +18,9 @@ class ConnectionService extends ChangeNotifier {
   /// UIDs currently discovered via Bluetooth.
   final Set<String> nearbyUids = {};
 
+  /// UIDs currently being loaded (BT connected, API in progress).
+  final Set<String> loadingPeerUids = {};
+
   /// This user's UID (loaded from SharedPreferences).
   String? myUid;
 
@@ -39,24 +42,37 @@ class ConnectionService extends ChangeNotifier {
   /// Called when a peer UID is received via Bluetooth.
   Future<void> onPeerDiscovered(String peerUid) async {
     nearbyUids.add(peerUid);
+    loadingPeerUids.add(peerUid);
     notifyListeners();
 
-    if (myUid == null) return;
+    if (myUid == null) {
+      loadingPeerUids.remove(peerUid);
+      notifyListeners();
+      return;
+    }
 
     // Only the alphabetically-first user creates the connection to avoid duplicates
-    if (myUid!.compareTo(peerUid) > 0) return;
+    if (myUid!.compareTo(peerUid) > 0) {
+      loadingPeerUids.remove(peerUid);
+      notifyListeners();
+      return;
+    }
 
     final connectionId = _makeConnectionId(myUid!, peerUid);
-    if (connections.containsKey(connectionId)) return;
+    if (connections.containsKey(connectionId)) {
+      loadingPeerUids.remove(peerUid);
+      notifyListeners();
+      return;
+    }
 
     debugPrint('[knkt] Creating connection: $myUid <-> $peerUid');
     final conn = await BackendService.createConnection(myUid!, peerUid);
     if (conn != null) {
       connections[conn.connectionId] = conn;
-      // Fetch peer profile if not cached
       await _ensurePeerProfile(peerUid);
-      notifyListeners();
     }
+    loadingPeerUids.remove(peerUid);
+    notifyListeners();
   }
 
   /// Called when a Bluetooth peer is lost.
@@ -128,6 +144,7 @@ class ConnectionService extends ChangeNotifier {
     connections.clear();
     peerProfiles.clear();
     nearbyUids.clear();
+    loadingPeerUids.clear();
     notifyListeners();
   }
 
