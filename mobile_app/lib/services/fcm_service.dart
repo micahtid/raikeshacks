@@ -1,34 +1,43 @@
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 
 import 'backend_service.dart';
 
-/// Firebase Cloud Messaging setup.
-///
-/// Note: Full FCM requires firebase_core and firebase_messaging packages
-/// plus Firebase project configuration (google-services.json, etc.).
-/// This class provides the integration point — initialize() should be
-/// called after Firebase.initializeApp().
 class FcmService {
   String? _uid;
+  final _messaging = FirebaseMessaging.instance;
 
-  /// Initialize FCM: request permission, get token, register with server.
-  ///
-  /// Call this after Firebase is initialized and user is signed in.
   Future<void> initialize(String uid) async {
     _uid = uid;
 
     try {
-      // Firebase messaging is only available after Firebase.initializeApp()
-      // and adding firebase_messaging dependency + firebase config files.
-      // For now, this is a stub that will be activated in Phase 4.
-      debugPrint('[knkt] FCM: Ready for initialization (uid: $uid)');
-      debugPrint('[knkt] FCM: Requires Firebase project setup (Phase 4)');
+      // Request notification permission
+      final settings = await _messaging.requestPermission();
+      debugPrint('[knkt] FCM permission: ${settings.authorizationStatus}');
+
+      // Get token and register with server
+      final token = await _messaging.getToken();
+      if (token != null) {
+        await _registerToken(token);
+      }
+
+      // Listen for token refresh
+      _messaging.onTokenRefresh.listen(_registerToken);
+
+      // Handle foreground messages
+      FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+        debugPrint('[knkt] FCM foreground message: ${message.notification?.title}');
+      });
+
+      // Handle background tap
+      FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
+        debugPrint('[knkt] FCM opened from background: ${message.data}');
+      });
     } catch (e) {
       debugPrint('[knkt] FCM init error: $e');
     }
   }
 
-  /// Register the FCM token with the server.
   Future<void> _registerToken(String token) async {
     if (_uid == null) return;
     await BackendService.updateFcmToken(_uid!, token);

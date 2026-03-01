@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "559124015350",
+    "project_id": "raikes-hacks",
+    "storage_bucket": "raikes-hacks.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:559124015350:android:dc033556305a375fffe4d7",
+        "android_client_info": {
+          "package_name": "com.example.mobile_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCKhRqgVCTliJqg55viLsWyXvtFItgyrwQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

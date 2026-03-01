@@ -1,28 +1,19 @@
 import math
 import logging
+import os
 import re
 from datetime import datetime, timezone
 from dataclasses import dataclass, field
 from typing import Optional
 
-# Set up logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-# ── Robust Model Loading ────────────────────────────────────────────────
-try:
-    from sentence_transformers import SentenceTransformer
-    # 'all-MiniLM-L6-v2' is the target, but we wrap it to handle Python 3.14 issues
-    model = SentenceTransformer('all-MiniLM-L6-v2')
-    HAS_TRANSFORMERS = True
-    logger.info("✅ SentenceTransformer loaded successfully.")
-except Exception as e:
-    logger.warning(f"⚠️ Similarity Engine Fallback: {e}")
-    model = None
-    HAS_TRANSFORMERS = False
+import httpx
 
 from db import get_db
 from models.student import FocusArea, SkillPriority, StudentProfile
+
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # ── Helpers ──────────────────────────────────────────────────────────────
 
@@ -41,36 +32,53 @@ def _jaccard_sim(set_a: set, set_b: set) -> float:
         return 0.0
     return len(set_a & set_b) / len(set_a | set_b)
 
-def _simple_text_to_vec(text: str) -> set[str]:
-    """Fallback: Basic tokenization for keyword matching."""
-    return set(re.findall(r'\w+', text.lower()))
+# ── Embedding via OpenRouter ─────────────────────────────────────────────
+
+EMBEDDING_MODEL = "openai/text-embedding-3-small"
+
+async def _get_embedding(text: str) -> list[float]:
+    """Get embedding vector from OpenRouter using openai/text-embedding-3-small."""
+    api_key = os.getenv("OPENROUTER_API_KEY")
+    if not api_key:
+        logger.warning("OPENROUTER_API_KEY not set, cannot generate embeddings")
+        return []
+
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.post(
+                "https://openrouter.ai/api/v1/embeddings",
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": EMBEDDING_MODEL,
+                    "input": text or "none",
+                },
+            )
+            resp.raise_for_status()
+            return resp.json()["data"][0]["embedding"]
+    except Exception as e:
+        logger.warning(f"Embedding API error: {e}")
+        return []
 
 # ── Embedding Logic ─────────────────────────────────────────────────────
 
-def generate_profile_embeddings(profile: StudentProfile) -> dict:
-    """Generate semantic embeddings (or keywords if fallback) for a student."""
+async def generate_profile_embeddings(profile: StudentProfile) -> dict:
+    """Generate semantic embeddings via OpenRouter for a student."""
     possessed_items = [s.name for s in profile.skills.possessed]
     if profile.project and profile.project.one_liner:
         possessed_items.append(profile.project.one_liner)
     if profile.project and profile.project.industry:
         possessed_items.extend(profile.project.industry)
     possessed_text = ". ".join(possessed_items)
-    
+
     needed_items = [s.name for s in profile.skills.needed]
     needed_text = ". ".join(needed_items)
-    
-    # If we have the model, use it. Otherwise, store as keywords for fallback.
-    if HAS_TRANSFORMERS and model:
-        p_res = model.encode(possessed_text or "none")
-        p_vec = p_res.tolist() if hasattr(p_res, 'tolist') else list(p_res)
-        
-        n_res = model.encode(needed_text or "none")
-        n_vec = n_res.tolist() if hasattr(n_res, 'tolist') else list(n_res)
-    else:
-        # Fallback: Store keywords so we can still match if torch is broken
-        p_vec = list(_simple_text_to_vec(possessed_text))
-        n_vec = list(_simple_text_to_vec(needed_text))
-    
+
+    p_vec = await _get_embedding(possessed_text)
+    n_vec = await _get_embedding(needed_text)
+
     return {
         "possessed_vector": p_vec,
         "needed_vector": n_vec,
@@ -97,7 +105,7 @@ def vectorize_profile(profile: StudentProfile) -> ProfileVectors:
 
     focus_set = {fa.value for fa in profile.focus_areas}
     pv.focus_vec = [1.0 if fa in focus_set else 0.0 for fa in FOCUS_AREA_ORDER]
-    
+
     pv.possessed_names = {s.name.strip().lower() for s in profile.skills.possessed}
     pv.needed_names = {s.name.strip().lower() for s in profile.skills.needed}
     return pv
@@ -130,26 +138,24 @@ def compute_match(
 ) -> MatchScore:
     # 1. Complementarity
     use_semantic = (
-        HAS_TRANSFORMERS
-        and len(query_vecs.possessed_vec) > 0
+        len(query_vecs.possessed_vec) > 0
         and len(cand_vecs.possessed_vec) > 0
         and isinstance(query_vecs.possessed_vec[0], (int, float))
         and isinstance(cand_vecs.possessed_vec[0], (int, float))
     )
     if use_semantic:
-        # Semantic Match
         help_they_give_you = _cosine_sim(query_vecs.needed_vec, cand_vecs.possessed_vec)
         help_you_give_them = _cosine_sim(cand_vecs.needed_vec, query_vecs.possessed_vec)
     else:
-        # Fallback Keyword Match (Jaccard) — empty/sparse or non-numeric vectors
+        # Fallback Keyword Match (Jaccard)
         q_need = set(query_vecs.needed_vec)
         c_have = set(cand_vecs.possessed_vec)
         help_they_give_you = _jaccard_sim(q_need, c_have)
-        
+
         c_need = set(cand_vecs.needed_vec)
         q_have = set(query_vecs.possessed_vec)
         help_you_give_them = _jaccard_sim(c_need, q_have)
-    
+
     complementarity = 0.5 * help_they_give_you + 0.5 * help_you_give_them
 
     # 2. Focus Overlap
@@ -196,7 +202,7 @@ async def find_matches(
     query_profile = next((p for p in profiles if p.uid == query_uid), None)
     if not query_profile:
         return None, 0, []
-        
+
     candidates = [p for p in profiles if p.uid != query_uid]
     query_vecs = vectorize_profile(query_profile)
 

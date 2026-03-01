@@ -4,7 +4,6 @@ gunicorn
 motor
 pydantic[email]
 python-dotenv
-sentence-transformers
 httpx
 python-docx
 PyPDF2
