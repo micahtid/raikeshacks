@@ -127,7 +127,7 @@ async def create_student(data: StudentCreate) -> StudentProfile:
     
     # Generate embeddings based on the initial data
     temp_profile = StudentProfile(**doc)
-    doc["rag"] = generate_profile_embeddings(temp_profile)
+    doc["rag"] = await generate_profile_embeddings(temp_profile)
     
     await db.student_profiles.insert_one(doc)
     doc.pop("_id", None)
@@ -171,7 +171,7 @@ async def update_student(uid: str, data: StudentUpdate) -> Optional[StudentProfi
     # Re-generate embeddings if relevant fields changed
     if "skills" in changes or "project" in changes:
         profile = StudentProfile(**result)
-        rag = generate_profile_embeddings(profile)
+        rag = await generate_profile_embeddings(profile)
         result = await db.student_profiles.find_one_and_update(
             {"uid": uid},
             {"$set": {"rag": rag}},
