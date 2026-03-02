@@ -26,17 +26,130 @@ class ConnectionService extends ChangeNotifier {
 
   Timer? _pollTimer;
 
+  /// When true, uses local mock data instead of backend calls.
+  bool demoMode = false;
+
   /// Load myUid from prefs, fetch existing connections, start polling.
   Future<void> initialize() async {
     final prefs = await SharedPreferences.getInstance();
     myUid = prefs.getString('student_uid');
-    if (myUid == null) return;
+    if (myUid == null) myUid = 'demo_user';
+
+    if (demoMode) {
+      _loadDemoData();
+      return;
+    }
 
     await refreshConnections();
     _pollTimer = Timer.periodic(
       const Duration(seconds: 20),
       (_) => refreshConnections(),
     );
+  }
+
+  /// Populate mock connections for demo purposes.
+  void _loadDemoData() {
+    final me = myUid!;
+    const peerA = 'demo_peer_pending';
+    const peerB = 'demo_peer_requested';
+    const peerC = 'demo_peer_discover';
+
+    // 1) Incoming request (other accepted, I haven't) — "Pending" from their side
+    final connA = ConnectionModel(
+      connectionId: '${me}_$peerA',
+      uid1: me,
+      uid2: peerA,
+      uid1Accepted: false,
+      uid2Accepted: true,
+      matchPercentage: 85.0,
+      uid1Summary: 'They have strong backend and systems design skills that complement your frontend expertise.',
+      uid2Summary: 'You bring creative UI/UX skills that pair well with their engineering background.',
+      notificationMessage: 'A great complementary match!',
+      createdAt: DateTime.now().toIso8601String(),
+    );
+
+    // 2) Sent request (I accepted, other hasn't) — "Pending" from my side
+    final connB = ConnectionModel(
+      connectionId: '${me}_$peerB',
+      uid1: me,
+      uid2: peerB,
+      uid1Accepted: true,
+      uid2Accepted: false,
+      matchPercentage: 72.0,
+      uid1Summary: 'They are experienced in ML and data pipelines — exactly what you need.',
+      uid2Summary: 'You bring product vision and design thinking to their technical skillset.',
+      notificationMessage: 'Strong skills alignment detected!',
+      createdAt: DateTime.now().toIso8601String(),
+    );
+
+    // 3) New discovery (neither accepted)
+    final connC = ConnectionModel(
+      connectionId: '${me}_$peerC',
+      uid1: me,
+      uid2: peerC,
+      uid1Accepted: false,
+      uid2Accepted: false,
+      matchPercentage: 91.0,
+      uid1Summary: 'They are building in the same space and have complementary technical skills.',
+      uid2Summary: 'You have the design and growth skills their project needs.',
+      notificationMessage: 'Exceptional match nearby!',
+      createdAt: DateTime.now().toIso8601String(),
+    );
+
+    connections[connA.connectionId] = connA;
+    connections[connB.connectionId] = connB;
+    connections[connC.connectionId] = connC;
+
+    // Mock peer profiles (anonymous until accepted)
+    peerProfiles[peerA] = {
+      'identity': {
+        'full_name': 'Jordan Rivera',
+        'university': 'MIT',
+        'graduation_year': 2026,
+        'major': ['Computer Science'],
+        'minor': ['Mathematics'],
+      },
+      'focus_areas': ['startup', 'research'],
+      'project': {'one_liner': 'Building an AI-powered tutoring platform', 'stage': 'mvp', 'industry': ['EdTech', 'AI']},
+      'skills': {
+        'possessed': [{'name': 'Python', 'source': 'resume'}, {'name': 'Systems Design', 'source': 'resume'}, {'name': 'Cloud Infrastructure', 'source': 'portfolio'}],
+        'needed': [{'name': 'UI/UX Design', 'priority': 'must_have'}, {'name': 'React Native', 'priority': 'nice_to_have'}],
+      },
+    };
+
+    peerProfiles[peerB] = {
+      'identity': {
+        'full_name': 'Alex Chen',
+        'university': 'Stanford',
+        'graduation_year': 2025,
+        'major': ['Data Science'],
+        'minor': [],
+      },
+      'focus_areas': ['side_project', 'open_source'],
+      'project': {'one_liner': 'Open-source ML pipeline toolkit', 'stage': 'launched', 'industry': ['Developer Tools']},
+      'skills': {
+        'possessed': [{'name': 'Machine Learning', 'source': 'resume'}, {'name': 'Data Engineering', 'source': 'resume'}],
+        'needed': [{'name': 'Product Management', 'priority': 'must_have'}],
+      },
+    };
+
+    peerProfiles[peerC] = {
+      'identity': {
+        'full_name': 'Sam Patel',
+        'university': 'UC Berkeley',
+        'graduation_year': 2026,
+        'major': ['EECS', 'Business'],
+        'minor': ['Design'],
+      },
+      'focus_areas': ['startup', 'looking'],
+      'project': {'one_liner': 'Marketplace for student freelancers', 'stage': 'idea', 'industry': ['Marketplace', 'Future of Work']},
+      'skills': {
+        'possessed': [{'name': 'Full-Stack Development', 'source': 'portfolio'}, {'name': 'Growth Marketing', 'source': 'questionnaire'}],
+        'needed': [{'name': 'Mobile Development', 'priority': 'must_have'}, {'name': 'Backend Architecture', 'priority': 'must_have'}],
+      },
+    };
+
+    notifyListeners();
   }
 
   /// Called when a peer UID is received via Bluetooth.
@@ -95,6 +208,30 @@ class ConnectionService extends ChangeNotifier {
   /// Accept (or Connect) a connection.
   Future<void> acceptConnection(String connectionId) async {
     if (myUid == null) return;
+
+    if (demoMode) {
+      // Simulate accept locally
+      await Future.delayed(const Duration(milliseconds: 800));
+      final conn = connections[connectionId];
+      if (conn == null) return;
+      final updated = ConnectionModel(
+        connectionId: conn.connectionId,
+        uid1: conn.uid1,
+        uid2: conn.uid2,
+        uid1Accepted: conn.uid1 == myUid ? true : conn.uid1Accepted,
+        uid2Accepted: conn.uid2 == myUid ? true : conn.uid2Accepted,
+        matchPercentage: conn.matchPercentage,
+        uid1Summary: conn.uid1Summary,
+        uid2Summary: conn.uid2Summary,
+        notificationMessage: conn.notificationMessage,
+        createdAt: conn.createdAt,
+        updatedAt: DateTime.now().toIso8601String(),
+      );
+      connections[connectionId] = updated;
+      notifyListeners();
+      return;
+    }
+
     final updated = await BackendService.acceptConnection(connectionId, myUid!);
     if (updated != null) {
       connections[connectionId] = updated;
@@ -110,7 +247,7 @@ class ConnectionService extends ChangeNotifier {
 
   /// Refresh all connections from server.
   Future<void> refreshConnections() async {
-    if (myUid == null) return;
+    if (myUid == null || demoMode) return;
     final list = await BackendService.getConnectionsForUser(myUid!);
     if (list != null) {
       connections.clear();

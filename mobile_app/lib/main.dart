@@ -62,7 +62,7 @@ class _AuthGateState extends State<AuthGate> {
   late final GoogleSignIn _googleSignIn;
   final NearbyService _nearbyService = NearbyService();
   final NotificationService _notificationService = NotificationService();
-  final ConnectionService _connectionService = ConnectionService();
+  final ConnectionService _connectionService = ConnectionService()..demoMode = true;
   final WebSocketService _webSocketService = WebSocketService();
   final FcmService _fcmService = FcmService();
   GoogleSignInAccount? _currentUser;
