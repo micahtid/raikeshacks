@@ -65,6 +65,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   bool _isTogglingBluetooth = false;
   bool _isDeleting = false;
   bool _isClearingData = false;
+  bool _isSendingNotification = false;
   /// Connection IDs currently being accepted (for button loading state).
   final Set<String> _acceptingConnectionIds = {};
 
@@ -250,6 +251,40 @@ class _DashboardScreenState extends State<DashboardScreen> {
       }
     } finally {
       if (mounted) setState(() => _isDeleting = false);
+    }
+  }
+
+  Future<void> _sendMockNotification() async {
+    setState(() => _isSendingNotification = true);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final uid = prefs.getString('student_uid');
+
+      if (uid == null || uid.isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('No account found')),
+          );
+        }
+        return;
+      }
+
+      final success = await BackendService.sendMockGeminiNotification(uid);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(success ? 'Notification sent!' : 'Failed to send'),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isSendingNotification = false);
     }
   }
 
@@ -1036,6 +1071,70 @@ class _DashboardScreenState extends State<DashboardScreen> {
       key: const ValueKey('developer'),
       padding: const EdgeInsets.only(top: 24, bottom: 120),
       children: [
+        // ── Notifications section ──
+        Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.screenPadding,
+          ),
+          child: Text(
+            'Notifications',
+            style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                  color: AppColors.textSecondary,
+                  letterSpacing: 0.5,
+                ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.screenPadding,
+          ),
+          child: FilledButton.icon(
+            onPressed: _isSendingNotification ? null : _sendMockNotification,
+            style: FilledButton.styleFrom(
+              backgroundColor: AppColors.primary,
+              foregroundColor: AppColors.onPrimary,
+            ),
+            icon: _isSendingNotification
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: AppColors.onPrimary,
+                    ),
+                  )
+                : const Icon(Icons.notifications_active_rounded, size: 20),
+            label: const Text('Send Mock Gemini Notification'),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.screenPadding,
+          ),
+          child: Text(
+            'Sends a hard-coded FCM notification that mimics a Gemini-generated match alert.',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+        ),
+
+        const SizedBox(height: 32),
+
+        // ── Data section ──
+        Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.screenPadding,
+          ),
+          child: Text(
+            'Data',
+            style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                  color: AppColors.textSecondary,
+                  letterSpacing: 0.5,
+                ),
+          ),
+        ),
+        const SizedBox(height: 12),
         Padding(
           padding: const EdgeInsets.symmetric(
             horizontal: AppSpacing.screenPadding,

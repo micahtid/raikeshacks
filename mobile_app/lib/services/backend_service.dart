@@ -134,6 +134,18 @@ class BackendService {
     }
   }
 
+  /// Send a hard-coded Gemini-style mock notification via FCM (dev/demo).
+  static Future<bool> sendMockGeminiNotification(String uid) async {
+    final uri = Uri.parse('$_baseUrl/students/$uid/mock-gemini-notification');
+    try {
+      final response = await http.post(uri);
+      return response.statusCode >= 200 && response.statusCode < 300;
+    } catch (e) {
+      debugPrint('[knkt] sendMockGeminiNotification failed: $e');
+      return false;
+    }
+  }
+
   // ── Connections ───────────────────────────────────────────────────────
 
   /// Create a new connection between two users.

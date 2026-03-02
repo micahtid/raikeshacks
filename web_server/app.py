@@ -250,6 +250,20 @@ async def test_notification(uid: str):
     return {"status": "sent"}
 
 
+@app.post("/students/{uid}/mock-gemini-notification")
+async def mock_gemini_notification(uid: str):
+    """Send a hard-coded Gemini-style match notification via FCM (for demo)."""
+    ok = await send_push_notification(
+        uid,
+        "New Match!",
+        "A CS student working on mobile apps with Flutter shares your passion for AI — could be a great collab!",
+        {"connection_id": "demo_mock_001"},
+    )
+    if not ok:
+        raise HTTPException(status_code=500, detail="Failed to send notification")
+    return {"status": "sent"}
+
+
 # ── Connection endpoints ───────────────────────────────────────────────
 
 
