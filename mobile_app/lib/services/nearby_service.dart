@@ -27,8 +27,10 @@ class NearbyService extends ChangeNotifier {
   String statusMessage = 'Idle';
 
   final Map<String, PeerDevice> discoveredPeers = {};
-  String? connectedEndpointId;
-  String? connectedPeerName;
+  /// Currently connected endpoint IDs (supports multiple simultaneous connections).
+  final Set<String> connectedEndpoints = {};
+  /// Maps connected endpoint IDs to peer display names.
+  final Map<String, String> connectedPeerNames = {};
 
   /// Maps endpointId → uid for discovered peers.
   final Map<String, String> endpointToUid = {};
@@ -154,8 +156,8 @@ class NearbyService extends ChangeNotifier {
   Future<void> stopAll() async {
     await BackgroundServiceManager.stop();
     await _stopNearby();
-    connectedEndpointId = null;
-    connectedPeerName = null;
+    connectedEndpoints.clear();
+    connectedPeerNames.clear();
     discoveredPeers.clear();
     endpointToUid.clear();
     _pendingNames.clear();
@@ -179,10 +181,11 @@ class NearbyService extends ChangeNotifier {
     notifyListeners();
 
     // Auto-connect: the device whose name sorts first initiates.
-    if (connectedEndpointId == null && displayName.compareTo(name) < 0) {
+    // Supports multiple simultaneous connections.
+    if (!connectedEndpoints.contains(endpointId) && displayName.compareTo(name) < 0) {
       _setStatus('Found "$name" — auto-connecting…');
       _autoConnect(endpointId);
-    } else if (connectedEndpointId == null) {
+    } else if (!connectedEndpoints.contains(endpointId)) {
       _setStatus('Found "$name" — waiting for their connection…');
     }
   }
@@ -214,8 +217,8 @@ class NearbyService extends ChangeNotifier {
     debugPrint('[knkt] onConnectionResult: $endpointId → ${status.name}');
     if (status == Status.CONNECTED) {
       final name = _pendingNames[endpointId] ?? endpointId;
-      connectedEndpointId = endpointId;
-      connectedPeerName = name;
+      connectedEndpoints.add(endpointId);
+      connectedPeerNames[endpointId] = name;
       notifyListeners();
       _setStatus('Connected to "$name". Exchanging UID…');
       // Send our UID to the peer (instead of secret word).
@@ -230,10 +233,8 @@ class NearbyService extends ChangeNotifier {
 
   void _onDisconnected(String endpointId) {
     debugPrint('[knkt] onDisconnected: $endpointId');
-    if (connectedEndpointId == endpointId) {
-      connectedEndpointId = null;
-      connectedPeerName = null;
-    }
+    connectedEndpoints.remove(endpointId);
+    connectedPeerNames.remove(endpointId);
     _pendingNames.remove(endpointId);
     onPeerLost?.call(endpointId);
     endpointToUid.remove(endpointId);
@@ -246,9 +247,9 @@ class NearbyService extends ChangeNotifier {
     final peerUid = utf8.decode(payload.bytes!);
     debugPrint('[knkt] Received UID from $endpointId: $peerUid');
 
-    connectedEndpointId ??= endpointId;
+    connectedEndpoints.add(endpointId);
     final peer = _pendingNames[endpointId] ?? endpointId;
-    connectedPeerName ??= peer;
+    connectedPeerNames[endpointId] = peer;
 
     // Store endpointId → uid mapping
     endpointToUid[endpointId] = peerUid;

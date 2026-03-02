@@ -65,6 +65,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
   bool _isTogglingBluetooth = false;
   bool _isDeleting = false;
   bool _isClearingData = false;
+  /// Connection IDs currently being accepted (for button loading state).
+  final Set<String> _acceptingConnectionIds = {};
 
   NearbyService get _svc => widget.nearbyService;
   ConnectionService get _connSvc => widget.connectionService;
@@ -464,9 +466,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
               myUid: _connSvc.myUid ?? '',
               isAnonymous: _isAnonymous(conn),
               buttonMode: mode,
+              isLoading: _acceptingConnectionIds.contains(conn.connectionId),
               showChatButton: conn.isComplete,
               onTap: () => _showProfileSheet(conn),
-              onAction: () => _connSvc.acceptConnection(conn.connectionId),
+              onAction: () async {
+                setState(() => _acceptingConnectionIds.add(conn.connectionId));
+                try {
+                  await _connSvc.acceptConnection(conn.connectionId);
+                } finally {
+                  if (mounted) setState(() => _acceptingConnectionIds.remove(conn.connectionId));
+                }
+              },
               onChat: () => _pushChatScreen(conn),
             ),
           );
@@ -574,18 +584,28 @@ class _DashboardScreenState extends State<DashboardScreen> {
           buttonLabel = 'Accept';
           buttonEnabled = true;
           buttonColor = AppColors.primary;
-          buttonAction = () {
-            _connSvc.acceptConnection(conn.connectionId);
+          buttonAction = () async {
             Navigator.pop(ctx);
+            setState(() => _acceptingConnectionIds.add(conn.connectionId));
+            try {
+              await _connSvc.acceptConnection(conn.connectionId);
+            } finally {
+              if (mounted) setState(() => _acceptingConnectionIds.remove(conn.connectionId));
+            }
           };
         } else {
           // Neither connected — show Connect
           buttonLabel = 'Connect';
           buttonEnabled = true;
           buttonColor = AppColors.primary;
-          buttonAction = () {
-            _connSvc.acceptConnection(conn.connectionId);
+          buttonAction = () async {
             Navigator.pop(ctx);
+            setState(() => _acceptingConnectionIds.add(conn.connectionId));
+            try {
+              await _connSvc.acceptConnection(conn.connectionId);
+            } finally {
+              if (mounted) setState(() => _acceptingConnectionIds.remove(conn.connectionId));
+            }
           };
         }
 
@@ -1075,9 +1095,10 @@ class _ConnectionCard extends StatelessWidget {
   final String myUid;
   final bool isAnonymous;
   final CardButtonMode buttonMode;
+  final bool isLoading;
   final bool showChatButton;
   final VoidCallback onTap;
-  final VoidCallback onAction;
+  final Future<void> Function() onAction;
   final VoidCallback? onChat;
 
   const _ConnectionCard({
@@ -1087,6 +1108,7 @@ class _ConnectionCard extends StatelessWidget {
     required this.myUid,
     this.isAnonymous = false,
     required this.buttonMode,
+    this.isLoading = false,
     required this.showChatButton,
     required this.onTap,
     required this.onAction,
@@ -1159,21 +1181,30 @@ class _ConnectionCard extends StatelessWidget {
             if (buttonMode == CardButtonMode.connect || buttonMode == CardButtonMode.accept) ...[
               const SizedBox(width: 8),
               GestureDetector(
-                onTap: onAction,
+                onTap: isLoading ? null : onAction,
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
                   decoration: BoxDecoration(
-                    color: AppColors.primary,
+                    color: isLoading ? AppColors.inactive : AppColors.primary,
                     borderRadius: BorderRadius.circular(10),
                   ),
-                  child: Text(
-                    buttonMode == CardButtonMode.accept ? 'Accept' : 'Connect',
-                    style: GoogleFonts.sora(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.onPrimary,
-                    ),
-                  ),
+                  child: isLoading
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: AppColors.onPrimary,
+                          ),
+                        )
+                      : Text(
+                          buttonMode == CardButtonMode.accept ? 'Accept' : 'Connect',
+                          style: GoogleFonts.sora(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.onPrimary,
+                          ),
+                        ),
                 ),
               ),
             ] else if (buttonMode == CardButtonMode.pending) ...[

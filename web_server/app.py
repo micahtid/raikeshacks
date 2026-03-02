@@ -369,13 +369,14 @@ async def accept_connection_endpoint(connection_id: str, body: ConnectionAccept)
         }
         await ws_manager.broadcast_to_users([conn.uid1, conn.uid2], event)
 
-        # HARD-CODED: send to ALL devices for testing. Replace with targeted
-        # delivery once FCM routing is verified.
-        await send_push_to_all(
-            "Connection Complete!",
-            "You're connected! Start chatting now.",
-            {"connection_id": connection_id, "room_id": room.room_id},
-        )
+        # Send targeted FCM push to both users
+        for notify_uid in [conn.uid1, conn.uid2]:
+            await send_push_notification(
+                notify_uid,
+                "Connection Complete!",
+                "You're connected! Start chatting now.",
+                {"connection_id": connection_id, "room_id": room.room_id},
+            )
     else:
         # Only one accepted — notify the other user
         event = {
@@ -384,9 +385,9 @@ async def accept_connection_endpoint(connection_id: str, body: ConnectionAccept)
         }
         await ws_manager.send_to_user(other_uid, event)
 
-        # HARD-CODED: send to ALL devices for testing. Replace with targeted
-        # delivery once FCM routing is verified.
-        await send_push_to_all(
+        # Send targeted FCM push only to the other user (not the one who accepted)
+        await send_push_notification(
+            other_uid,
             "Someone wants to connect!",
             gemini_msg,
             {"connection_id": connection_id},
